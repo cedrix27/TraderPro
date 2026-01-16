@@ -1,0 +1,28 @@
+{
+  "model_version": "1.0.0-B-classification",
+  "trained_at": "2025-12-30T13:51:07.700807",
+  "option": "B - Classification UP/DOWN",
+  "sequence_length": 14,
+  "feature_columns": [
+    "Open",
+    "High",
+    "Low",
+    "Close",
+    "Volume",
+    "Returns",
+    "Returns_2d",
+    "Returns_5d",
+    "Volatility",
+    "Range",
+    "Close_Position",
+    "Volume_Ratio"
+  ],
+  "target": "direction (UP=1, DOWN=0)",
+  "metrics": {
+    "accuracy": 0.5418994413407822,
+    "f1_score": 0.4142857142857143,
+    "improvement_over_random": 0.04189944134078216,
+    "test_samples": 179,
+    "up_ratio_test": 0.4860335195530726
+  }
+}

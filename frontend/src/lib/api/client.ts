@@ -172,6 +172,46 @@ export interface ModelStatus {
   } | null;
 }
 
+export interface LSTMPrediction {
+  prediction_for: string;
+  generated_at: string;
+  current_price: {
+    close: number;
+    date: string;
+  };
+  prediction: {
+    direction: "UP" | "DOWN";
+    confidence: number;
+    signal_strength: "STRONG" | "MODERATE" | "WEAK";
+    probabilities: {
+      UP: number;
+      DOWN: number;
+    };
+  };
+  recommendation: {
+    action: "CONSIDER_BUY" | "CONSIDER_SELL" | "WATCH" | "HOLD";
+    message: string;
+    risk_level: "LOW" | "MODERATE" | "HIGH";
+  };
+  model_info: {
+    version: string;
+    type: string;
+    trained_at: string;
+    sequence_length: number;
+    metrics: Record<string, any>;
+  };
+}
+
+export interface PredictionStatus {
+  is_loaded: boolean;
+  model_path: string;
+  model_exists: boolean;
+  scaler_exists: boolean;
+  config_exists: boolean;
+  last_prediction_date: string | null;
+  config: Record<string, any> | null;
+}
+
 export interface ChatResponse {
   message: string;
   analysis?: TechnicalAnalysis;
@@ -297,6 +337,29 @@ export const chatApi = {
       method: "POST",
       body: JSON.stringify({ message, context }),
     }),
+};
+
+/**
+ * LSTM Predictions (Prédiction du prix pour demain)
+ */
+export const predictionApi = {
+  /**
+   * Obtenir la prédiction OHLC pour demain
+   */
+  getTomorrowPrediction: (symbol: string = "BTCUSDT"): Promise<LSTMPrediction> =>
+    fetchApi(`/prediction/tomorrow?symbol=${symbol}`),
+
+  /**
+   * Obtenir le statut du service de prédiction
+   */
+  getStatus: (): Promise<PredictionStatus> =>
+    fetchApi("/prediction/status"),
+
+  /**
+   * Forcer le rafraîchissement de la prédiction
+   */
+  refresh: (): Promise<{ status: string; message: string }> =>
+    fetchApi("/prediction/refresh", { method: "POST" }),
 };
 
 /**

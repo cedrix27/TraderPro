@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bitcoin, LayoutDashboard, LineChart, BookOpen, Bot } from "lucide-react";
+import { Bitcoin, LayoutDashboard, LineChart, BookOpen, Bot, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMarketData } from "@/hooks";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/analysis", label: "Analyse", icon: LineChart },
+  { href: "/prediction", label: "Prediction", icon: Brain },
   { href: "/plans", label: "Plans", icon: BookOpen },
   { href: "/assistant", label: "Assistant IA", icon: Bot },
 ];

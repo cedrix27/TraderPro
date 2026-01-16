@@ -12,6 +12,7 @@ import {
   Bell,
   TrendingUp,
   TrendingDown,
+  Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,7 @@ import { Separator } from "@/components/ui/separator";
 const mainNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/analysis", label: "Analyse Technique", icon: LineChart },
+  { href: "/prediction", label: "Prediction IA", icon: Brain },
   { href: "/plans", label: "Plans de Trading", icon: BookOpen },
   { href: "/assistant", label: "Assistant IA", icon: Bot },
 ];

@@ -16,6 +16,10 @@ ML PREDICTIONS:
 - GET /api/predict              → Prédiction du modèle ML
 - POST /api/model/train         → Entraîner le modèle
 
+LSTM PREDICTIONS:
+- GET /api/prediction/tomorrow  → Prédiction OHLC pour demain (LSTM)
+- GET /api/prediction/status    → Statut du modèle LSTM
+
 TRADING PLANS:
 - GET /api/plans                → Liste des plans disponibles
 - GET /api/plans/{id}           → Détail d'un plan
@@ -35,6 +39,7 @@ from app.core.models import (
 from app.services.binance_service import binance_service
 from app.services.analysis_service import analysis_service
 from app.ml.model import trading_model
+from app.ml.prediction_service import prediction_service
 
 
 router = APIRouter(prefix="/api", tags=["TraderPro API"])
@@ -224,6 +229,92 @@ async def get_model_status():
         "is_trained": trading_model.is_trained,
         "metrics": trading_model.metrics if trading_model.is_trained else None
     }
+
+
+# ============ LSTM PREDICTIONS ============
+
+@router.get("/prediction/tomorrow")
+async def get_prediction_tomorrow(
+    symbol: str = Query(default="BTCUSDT")
+):
+    """
+    Obtenir la prédiction de direction pour demain (modèle LSTM Classification)
+
+    Le modèle LSTM prédit si le prix va monter (UP) ou descendre (DOWN) demain.
+    La prédiction est mise en cache et rafraîchie une fois par jour.
+
+    Retourne:
+    - prediction_for: Date de la prédiction (demain)
+    - current_price: Prix actuel
+    - prediction: Direction (UP/DOWN), confiance, probabilités
+    - recommendation: Action suggérée, message, niveau de risque
+    - model_info: Informations sur le modèle
+
+    - **symbol**: Paire de trading (défaut: BTCUSDT)
+    """
+    try:
+        # Vérifier si le modèle est disponible
+        status = prediction_service.get_status()
+        if not status['model_exists']:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "Modèle LSTM non disponible",
+                    "message": "Le modèle n'a pas été trouvé. Veuillez entraîner le modèle sur Colab et placer les fichiers dans backend/app/ml/models/",
+                    "required_files": [
+                        "btc_lstm_model_B.keras",
+                        "btc_scaler_B.pkl",
+                        "training_config_B.json"
+                    ]
+                }
+            )
+
+        # Récupérer les données historiques (30 jours suffisent pour Option B)
+        df = await binance_service.get_historical_data(symbol, "1d", days=30)
+
+        if df.empty:
+            raise HTTPException(status_code=404, detail="Pas de données disponibles")
+
+        if len(df) < 14:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Pas assez de données historiques. Requis: 14 jours, Disponible: {len(df)}"
+            )
+
+        # Faire la prédiction
+        prediction = await prediction_service.predict_tomorrow(df)
+
+        return prediction
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/prediction/status")
+async def get_prediction_status():
+    """
+    Obtenir le statut du service de prédiction LSTM
+
+    Retourne:
+    - is_loaded: Si le modèle est chargé en mémoire
+    - model_exists: Si les fichiers du modèle existent
+    - last_prediction_date: Date de la dernière prédiction
+    - config: Configuration du modèle
+    """
+    return prediction_service.get_status()
+
+
+@router.post("/prediction/refresh")
+async def refresh_prediction():
+    """
+    Forcer le rafraîchissement de la prédiction
+
+    Efface le cache et force une nouvelle prédiction lors du prochain appel.
+    """
+    prediction_service.clear_cache()
+    return {"status": "cache_cleared", "message": "Le cache a été effacé. La prochaine prédiction sera recalculée."}
 
 
 # ============ TRADING PLANS ============

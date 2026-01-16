@@ -12,7 +12,8 @@
 4. [Explication de Chaque Fichier](#4-explication-de-chaque-fichier)
 5. [Le Flux des Données](#5-le-flux-des-données)
 6. [Le Machine Learning Expliqué](#6-le-machine-learning-expliqué)
-7. [Glossaire des Termes](#7-glossaire-des-termes)
+7. [Le Reinforcement Learning (RL)](#7-le-reinforcement-learning-rl)
+8. [Glossaire des Termes](#8-glossaire-des-termes)
 
 ---
 
@@ -1091,7 +1092,602 @@ Réel   BUY      [45]   10     5     ← Sur 60 vrais BUY, 45 bien prédits
 
 ---
 
-## 7. Glossaire des Termes
+## 7. Le Reinforcement Learning (RL)
+
+### 7.1 Introduction au Reinforcement Learning
+
+Le Reinforcement Learning est une approche **fondamentalement différente** du Machine Learning supervisé (LSTM, XGBoost). C'est la prochaine étape pour rendre TraderPro plus intelligent.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    POURQUOI LE RL POUR LE TRADING ?             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  LSTM/XGBoost (Supervisé)     │  Reinforcement Learning        │
+│  ─────────────────────────    │  ───────────────────────       │
+│  Prédit UP/DOWN               │  Apprend une STRATÉGIE         │
+│  Décision unique              │  Gère position, timing, risk   │
+│  Besoin de labels             │  Apprend par RÉCOMPENSES       │
+│  Statique après entraînement  │  Peut s'ADAPTER continuellement│
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Analogie :**
+- **LSTM** = Un analyste qui dit "le prix va monter"
+- **RL** = Un trader complet qui décide quand acheter, combien, et quand vendre
+
+---
+
+### 7.2 Différence entre Supervisé et RL
+
+#### Approche Supervisée (LSTM actuel)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  DONNÉES HISTORIQUES         LABELS (qu'on crée nous-même) │
+│  ──────────────────         ─────────────────────────────  │
+│  Prix jour 1-14       →     "UP" (car jour 15 a monté)     │
+│  Prix jour 2-15       →     "DOWN" (car jour 16 a baissé)  │
+│  Prix jour 3-16       →     "UP"                           │
+│  ...                        ...                            │
+│                                                             │
+│  Le modèle apprend: "Ces patterns → Cette direction"       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**C'est comme un étudiant qui apprend avec un livre de réponses.**
+
+---
+
+#### Approche Reinforcement Learning
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ENVIRONNEMENT SIMULÉ                                       │
+│  ────────────────────                                       │
+│                                                             │
+│  Jour 1: Prix = $95,000                                     │
+│          Agent décide: BUY                                  │
+│          ...                                                │
+│  Jour 5: Prix = $97,000                                     │
+│          Agent décide: SELL                                 │
+│          Récompense: +$2,000 ✅                             │
+│                                                             │
+│  Jour 6: Prix = $97,500                                     │
+│          Agent décide: BUY                                  │
+│          ...                                                │
+│  Jour 8: Prix = $94,000                                     │
+│          Agent décide: HOLD (garde la position)             │
+│          ...                                                │
+│  Jour 10: Prix = $91,000                                    │
+│          Agent décide: SELL                                 │
+│          Récompense: -$6,500 ❌                             │
+│                                                             │
+│  L'agent apprend: "Cette situation → Mauvaise décision"     │
+│                   "Je ne referai plus ça"                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**C'est comme un enfant qui apprend à marcher - il tombe, ça fait mal, il ajuste.**
+
+---
+
+### 7.3 Le Processus d'Entraînement RL
+
+**OUI, le RL nécessite aussi un entraînement**, mais il fonctionne différemment :
+
+```
+        ┌──────────────────────────────────────────┐
+        │           BOUCLE D'APPRENTISSAGE         │
+        │           (des milliers de fois)         │
+        └──────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────────────┐
+    │  1. OBSERVER l'état actuel                        │
+    │     (prix, indicateurs, position, capital)        │
+    └───────────────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────────────┐
+    │  2. CHOISIR une action                            │
+    │     (BUY? SELL? HOLD?)                            │
+    │     Au début: quasi aléatoire                     │
+    │     Après entraînement: stratégie optimale        │
+    └───────────────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────────────┐
+    │  3. EXÉCUTER l'action dans la simulation          │
+    │     (pas avec du vrai argent!)                    │
+    └───────────────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────────────┐
+    │  4. RECEVOIR une récompense                       │
+    │     +profit → "Bien joué, continue comme ça"      │
+    │     -perte  → "Mauvais choix, évite ça"           │
+    └───────────────────────────────────────────────────┘
+                            │
+                            ▼
+    ┌───────────────────────────────────────────────────┐
+    │  5. APPRENDRE de cette expérience                 │
+    │     Mettre à jour le "cerveau" (réseau neuronal)  │
+    └───────────────────────────────────────────────────┘
+                            │
+                            ▼
+                    Recommencer au jour suivant
+                    (ou épisode suivant)
+```
+
+---
+
+### 7.4 Comparaison Complète
+
+| Aspect | LSTM (Supervisé) | Reinforcement Learning |
+|--------|------------------|------------------------|
+| **Apprend de** | Données étiquetées | Essais et erreurs |
+| **Objectif** | Prédire UP/DOWN | Maximiser le profit total |
+| **Feedback** | "Bonne/Mauvaise prédiction" | "Tu as gagné/perdu $X" |
+| **Entraînement** | 1 passe sur les données | Des milliers d'épisodes simulés |
+| **Durée** | Minutes | Heures/Jours |
+| **Output** | Probabilité UP/DOWN | Action (BUY/SELL/HOLD) + Quantité |
+| **Gestion du risque** | Non intégrée | Apprise automatiquement |
+| **Adaptation** | Ré-entraînement nécessaire | Peut apprendre en continu |
+
+---
+
+### 7.5 Pourquoi le RL est Plus Puissant
+
+Le RL apprend des choses que le LSTM ne peut pas :
+
+```
+LSTM pense:     "Le prix va monter" (70% confiance)
+
+RL pense:       "Le prix va probablement monter, MAIS:
+                 - J'ai déjà une grosse position
+                 - Le marché est très volatile
+                 - Mon dernier trade similaire a mal fini
+                 → Je vais HOLD et attendre une meilleure entrée"
+```
+
+**Le RL apprend une stratégie complète, pas juste une prédiction.**
+
+---
+
+### 7.6 Architecture Proposée pour TraderPro
+
+```
+backend/app/ml/
+├── models/                    # Existant (LSTM)
+├── prediction_service.py      # Existant (LSTM)
+├── model.py                   # Existant (XGBoost)
+│
+└── rl/                        # NOUVEAU - Reinforcement Learning
+    ├── __init__.py
+    ├── environment.py         # Environnement de trading (Gym)
+    ├── agent.py               # Agent RL (DQN, PPO, etc.)
+    ├── reward.py              # Fonctions de récompense
+    ├── state.py               # Feature engineering pour l'état
+    └── rl_service.py          # Service API (comme prediction_service)
+```
+
+---
+
+### 7.7 Les Composants Clés du RL
+
+#### A. Environment (Le Simulateur de Marché)
+
+C'est le composant **le plus important**. Il simule le marché pour que l'agent puisse s'entraîner sans risquer de vrai argent.
+
+```python
+class TradingEnvironment:
+    """
+    Simule le marché Bitcoin pour l'entraînement de l'agent.
+
+    COMPOSANTS:
+    -----------
+
+    1. STATE (État) - Ce que l'agent "voit"
+       - Prix actuel et historique
+       - Indicateurs techniques (RSI, MACD, etc.)
+       - Position actuelle (long/short/neutral)
+       - Capital disponible
+       - Profit/Perte non réalisé
+
+    2. ACTIONS - Ce que l'agent peut faire
+       - BUY: Acheter du BTC
+       - SELL: Vendre du BTC
+       - HOLD: Ne rien faire
+       (ou en continu: % du portfolio à investir)
+
+    3. REWARD (Récompense) - Le feedback
+       - Profit réalisé sur un trade
+       - Pénalité pour trop de trades (frais)
+       - Bonus pour bon ratio risk/reward
+
+    4. DONE - Fin de l'épisode
+       - Capital épuisé
+       - Fin de la période de données
+    """
+
+    def step(self, action):
+        """Exécute une action et retourne le nouvel état"""
+        # 1. Exécuter l'action (BUY/SELL/HOLD)
+        # 2. Avancer dans le temps (jour suivant)
+        # 3. Calculer la récompense
+        # 4. Vérifier si l'épisode est terminé
+        return new_state, reward, done, info
+
+    def reset(self):
+        """Réinitialise l'environnement pour un nouvel épisode"""
+        return initial_state
+```
+
+**Visualisation de l'environnement :**
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                    TRADING ENVIRONMENT                      │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│  État actuel:                                              │
+│  ┌──────────────────────────────────────────────────────┐ │
+│  │ Prix: $97,000  │ RSI: 45  │ Position: LONG 0.5 BTC  │ │
+│  │ Capital: $10,000 │ PnL: +$500 │ Drawdown: 2%        │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                            │
+│  Actions possibles:                                        │
+│  [BUY +0.1 BTC] [HOLD] [SELL 0.5 BTC]                     │
+│                                                            │
+│  Historique des prix:                                      │
+│  ────────────────/\──────                                  │
+│                 /  \    /                                  │
+│  ─────────────/────\──/                                    │
+│                                                            │
+└────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### B. Agent (Le Cerveau)
+
+L'agent est le "trader IA" qui apprend à prendre des décisions.
+
+```python
+class TradingAgent:
+    """
+    Le cerveau qui apprend à trader.
+
+    ALGORITHMES RECOMMANDÉS:
+    ------------------------
+
+    1. DQN (Deep Q-Network)
+       - Simple à implémenter
+       - Bon pour actions discrètes (BUY/SELL/HOLD)
+       - Utilise un réseau neuronal pour estimer la valeur des actions
+
+    2. PPO (Proximal Policy Optimization)
+       - Plus stable que DQN
+       - Gère bien les actions continues (% du portfolio)
+       - Standard de l'industrie
+
+    3. A2C/A3C (Advantage Actor-Critic)
+       - Parallélisable (entraînement plus rapide)
+       - Bon équilibre performance/stabilité
+
+    4. SAC (Soft Actor-Critic)
+       - State-of-the-art pour actions continues
+       - Encourage l'exploration
+    """
+
+    def select_action(self, state):
+        """Choisit une action basée sur l'état actuel"""
+        # Au début: exploration (actions aléatoires)
+        # Après entraînement: exploitation (meilleures actions)
+        return action
+
+    def learn(self, experience):
+        """Apprend d'une expérience (state, action, reward, next_state)"""
+        # Met à jour le réseau neuronal
+        pass
+```
+
+---
+
+#### C. Reward Function (La Fonction de Récompense)
+
+C'est **critique** - elle définit ce que l'agent optimise.
+
+```python
+class RewardFunction:
+    """
+    Définit comment récompenser/pénaliser l'agent.
+
+    EXEMPLES DE RÉCOMPENSES:
+    ------------------------
+
+    1. SIMPLE (profit brut)
+       reward = profit_realized
+       ⚠️ Problème: L'agent peut prendre trop de risques
+
+    2. SHARPE RATIO (ajusté au risque)
+       reward = returns / volatility
+       ✅ Encourage la consistance
+
+    3. PROFIT - DRAWDOWN
+       reward = profit - max_drawdown_penalty
+       ✅ Pénalise les grosses pertes
+
+    4. RÉALISTE (avec frais)
+       reward = profit * (1 - transaction_fee)
+       ✅ Évite le sur-trading
+    """
+
+    def calculate(self, action, profit, position, portfolio):
+        reward = 0
+
+        # Récompense pour le profit
+        reward += profit
+
+        # Pénalité pour le drawdown
+        if portfolio.drawdown > 0.1:  # Plus de 10% de perte
+            reward -= portfolio.drawdown * 10
+
+        # Pénalité pour trop de trades (frais)
+        if action != "HOLD":
+            reward -= 0.001  # 0.1% de frais
+
+        return reward
+```
+
+---
+
+### 7.8 Flux d'Utilisation
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PHASE D'ENTRAÎNEMENT                     │
+│                    (sur Colab ou local)                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Données historiques (1-2 ans)                              │
+│          │                                                  │
+│          ▼                                                  │
+│  ┌─────────────────┐                                        │
+│  │   Environment   │ ← Simule le marché                     │
+│  └────────┬────────┘                                        │
+│           │                                                 │
+│           ▼                                                 │
+│  ┌─────────────────┐                                        │
+│  │     Agent       │ ← Apprend par essai-erreur             │
+│  │  (DQN/PPO/SAC)  │   (milliers d'épisodes)                │
+│  └────────┬────────┘                                        │
+│           │                                                 │
+│           ▼                                                 │
+│  ┌─────────────────┐                                        │
+│  │  Modèle entraîné│ → Sauvegardé (.pt ou .keras)           │
+│  └─────────────────┘                                        │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    PHASE DE PRODUCTION                      │
+│                    (Backend TraderPro)                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Prix temps réel (Binance API)                              │
+│          │                                                  │
+│          ▼                                                  │
+│  ┌─────────────────┐                                        │
+│  │  State Builder  │ ← Construit l'état actuel              │
+│  └────────┬────────┘                                        │
+│           │                                                 │
+│           ▼                                                 │
+│  ┌─────────────────┐                                        │
+│  │  Agent (chargé) │ ← Utilise le modèle entraîné           │
+│  └────────┬────────┘                                        │
+│           │                                                 │
+│           ▼                                                 │
+│  ┌─────────────────┐                                        │
+│  │ Action recomm.  │ → BUY/SELL/HOLD + quantité             │
+│  └─────────────────┘                                        │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 7.9 Endpoints API Envisagés
+
+```python
+# ============ RL ENDPOINTS ============
+
+@router.get("/rl/action")
+async def get_rl_action(symbol: str = "BTCUSDT"):
+    """
+    Obtenir l'action recommandée par l'agent RL.
+
+    Retourne:
+    - action: BUY, SELL, ou HOLD
+    - quantity: Quantité suggérée (% du portfolio)
+    - confidence: Niveau de confiance
+    - reasoning: Explication de la décision
+    """
+    pass
+
+@router.get("/rl/status")
+async def get_rl_status():
+    """
+    Obtenir le statut de l'agent RL.
+
+    Retourne:
+    - is_loaded: Si le modèle est chargé
+    - algorithm: Algorithme utilisé (DQN, PPO, etc.)
+    - training_episodes: Nombre d'épisodes d'entraînement
+    - performance_metrics: Métriques de performance
+    """
+    pass
+
+@router.post("/rl/train")
+async def train_rl_agent(
+    episodes: int = 1000,
+    algorithm: str = "PPO"
+):
+    """
+    Entraîner l'agent RL (ATTENTION: Long!)
+
+    Cette opération peut prendre plusieurs heures.
+    Recommandé de le faire sur Colab avec GPU.
+    """
+    pass
+
+@router.get("/rl/performance")
+async def get_rl_performance():
+    """
+    Obtenir les métriques de performance de l'agent.
+
+    Retourne:
+    - total_return: Rendement total
+    - sharpe_ratio: Ratio de Sharpe
+    - max_drawdown: Perte maximale
+    - win_rate: Taux de trades gagnants
+    - avg_trade_duration: Durée moyenne des trades
+    """
+    pass
+```
+
+---
+
+### 7.10 Librairies à Utiliser
+
+```python
+# requirements.txt - Ajouts pour RL
+
+# Environnement
+gymnasium>=0.29.0        # Création d'environnements (ex-OpenAI Gym)
+
+# Algorithmes RL
+stable-baselines3>=2.0   # Implémentations RL prêtes à l'emploi
+                         # Inclut: DQN, PPO, A2C, SAC, TD3
+
+# Deep Learning Backend
+torch>=2.0               # PyTorch (backend pour les réseaux)
+
+# Optionnel
+tensorboard>=2.0         # Visualisation de l'entraînement
+optuna>=3.0              # Optimisation des hyperparamètres
+```
+
+---
+
+### 7.11 Exemple Simplifié d'Entraînement
+
+```python
+"""
+Exemple simplifié d'entraînement RL pour le trading.
+(Version conceptuelle pour comprendre le flux)
+"""
+
+from stable_baselines3 import PPO
+from gymnasium import Env
+
+class SimpleTradingEnv(Env):
+    def __init__(self, df):
+        self.df = df
+        self.current_step = 0
+        self.position = 0  # 0=neutral, 1=long, -1=short
+        self.capital = 10000
+
+    def reset(self):
+        self.current_step = 0
+        self.position = 0
+        self.capital = 10000
+        return self._get_state()
+
+    def step(self, action):
+        # Exécuter l'action
+        if action == 0:  # BUY
+            self.position = 1
+        elif action == 1:  # SELL
+            self.position = -1
+        else:  # HOLD
+            pass
+
+        # Avancer dans le temps
+        self.current_step += 1
+
+        # Calculer le profit/perte
+        price_change = self.df['close'].iloc[self.current_step] - \
+                       self.df['close'].iloc[self.current_step - 1]
+
+        reward = self.position * price_change
+        self.capital += reward
+
+        # Vérifier si terminé
+        done = self.current_step >= len(self.df) - 1 or self.capital <= 0
+
+        return self._get_state(), reward, done, {}
+
+    def _get_state(self):
+        # Retourne l'état actuel (prix, indicateurs, position)
+        return [
+            self.df['close'].iloc[self.current_step],
+            self.df['rsi'].iloc[self.current_step],
+            self.position,
+            self.capital
+        ]
+
+
+# ENTRAÎNEMENT
+env = SimpleTradingEnv(historical_data)
+model = PPO("MlpPolicy", env, verbose=1)
+
+# Entraîner pendant 100,000 steps
+model.learn(total_timesteps=100000)
+
+# Sauvegarder
+model.save("trading_agent_ppo")
+
+
+# UTILISATION
+model = PPO.load("trading_agent_ppo")
+state = env.reset()
+action, _ = model.predict(state)
+print(f"Action recommandée: {['BUY', 'SELL', 'HOLD'][action]}")
+```
+
+---
+
+### 7.12 Résumé RL vs LSTM
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        RÉSUMÉ COMPARATIF                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  LSTM (Actuel)                 Reinforcement Learning (Futur)  │
+│  ─────────────                 ─────────────────────────────   │
+│                                                                 │
+│  ✅ Simple à implémenter       ⚠️ Plus complexe                 │
+│  ✅ Entraînement rapide        ⚠️ Entraînement long (heures)    │
+│  ✅ Fonctionne bien            ✅ Potentiellement meilleur      │
+│                                                                 │
+│  ❌ Prédit seulement UP/DOWN   ✅ Stratégie complète            │
+│  ❌ Pas de gestion du risque   ✅ Risk management intégré       │
+│  ❌ Pas de position sizing     ✅ Apprend combien investir      │
+│                                                                 │
+│  RECOMMANDATION:                                                │
+│  Garder LSTM + Ajouter RL comme "mode avancé"                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 8. Glossaire des Termes
 
 ### Termes Généraux
 
@@ -1137,6 +1733,25 @@ Réel   BUY      [45]   10     5     ← Sur 60 vrais BUY, 45 bien prédits
 | **Overfitting** | Le modèle apprend par coeur (mauvais) |
 | **Data Leakage** | Le modèle "voit" le futur (erreur grave) |
 
+### Termes Reinforcement Learning
+
+| Terme | Définition |
+|-------|------------|
+| **Agent** | L'entité qui apprend et prend des décisions |
+| **Environment** | Le monde simulé dans lequel l'agent évolue |
+| **State** | L'observation actuelle de l'environnement |
+| **Action** | Ce que l'agent peut faire (BUY/SELL/HOLD) |
+| **Reward** | Feedback numérique (+profit ou -perte) |
+| **Episode** | Une séquence complète (du début à la fin) |
+| **Policy** | La stratégie de l'agent (état → action) |
+| **Q-Value** | Valeur estimée d'une action dans un état |
+| **Exploration** | Essayer des actions aléatoires pour découvrir |
+| **Exploitation** | Utiliser la meilleure action connue |
+| **DQN** | Deep Q-Network (algorithme RL avec neural network) |
+| **PPO** | Proximal Policy Optimization (algorithme stable) |
+| **Sharpe Ratio** | Rendement ajusté au risque (plus = mieux) |
+| **Drawdown** | Perte maximale depuis le pic (à minimiser) |
+
 ---
 
 ## Conclusion
@@ -1146,14 +1761,40 @@ Tu as maintenant une compréhension complète du backend TraderPro !
 **Pour résumer :**
 1. **FastAPI** gère les requêtes HTTP
 2. **Services** font le travail (Binance, Indicateurs, Analyse)
-3. **ML** prédit les mouvements avec XGBoost
+3. **ML Supervisé** prédit les mouvements avec XGBoost et LSTM
 4. **Modèles Pydantic** structurent les données
+5. **Reinforcement Learning** (à venir) apprendra des stratégies complètes
+
+**Architecture IA actuelle :**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    TRADERPRO - STACK IA                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │   XGBoost   │  │    LSTM     │  │  Reinforcement RL   │ │
+│  │  (ML rapide)│  │ (Deep Learn)│  │    (À implémenter)  │ │
+│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘ │
+│         │                │                     │            │
+│         ▼                ▼                     ▼            │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │              SIGNAL DE TRADING FINAL                    ││
+│  │           BUY / SELL / HOLD + Confiance                 ││
+│  └─────────────────────────────────────────────────────────┘│
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
 **Prochaines étapes :**
-1. Lance le backend : `uvicorn main:app --reload`
+1. Lance le backend : `./venv/bin/uvicorn main:app --reload`
 2. Explore la documentation : `http://localhost:8000/docs`
-3. Entraîne le modèle : `POST /api/model/train`
-4. Connecte le frontend !
+3. Teste la prédiction LSTM : `GET /api/prediction/tomorrow`
+4. (Futur) Implémenter le Reinforcement Learning
+
+**Évolution prévue :**
+- **Phase 1** ✅ : XGBoost + Analyse technique
+- **Phase 2** ✅ : LSTM pour prédiction UP/DOWN
+- **Phase 3** 🔄 : Reinforcement Learning pour stratégie complète
 
 ---
 

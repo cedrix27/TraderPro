@@ -84,14 +84,11 @@ TraderPro est une plateforme d'analyse et de trading Bitcoin assistée par Intel
 # Configuration CORS pour le frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",      # Next.js dev
-        "http://127.0.0.1:3000",
-        "http://localhost:8005",      # API docs
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=["*"],  # Allow all origins in development
+    allow_credentials=False,  # Must be False when using "*" for origins
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Inclure les routes
