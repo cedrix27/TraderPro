@@ -81,7 +81,7 @@ export function ChatWindow() {
             {isLoading && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">L'IA analyse votre question...</span>
+                <span className="text-sm">L&apos;IA analyse votre question...</span>
               </div>
             )}
           </div>

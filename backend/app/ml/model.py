@@ -1,308 +1,253 @@
-"""
-Modèle de Machine Learning pour la prédiction de trading
+"""Pipeline XGBoost reproductible pour les signaux BTC de TraderPro."""
+from __future__ import annotations
 
-============ ARCHITECTURE DU MODÈLE ============
+from datetime import datetime, timezone
+import json
+from itertools import product
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
 
-Ce fichier implémente un modèle de classification pour prédire:
-- BUY (1): Le prix va probablement monter
-- HOLD (0): Pas de signal clair
-- SELL (-1): Le prix va probablement baisser
-
-On utilise XGBoost car:
-1. Performant sur les données tabulaires
-2. Gère bien les features numériques
-3. Rapide à entraîner et à inférer
-4. Interprétable (feature importance)
-
-============ PIPELINE D'ENTRAÎNEMENT ============
-
-1. Collecte des données historiques (Binance)
-2. Feature Engineering (création des variables)
-3. Labelling (création des targets)
-4. Split train/test (validation temporelle)
-5. Entraînement du modèle
-6. Évaluation et validation
-7. Sauvegarde du modèle
-
-============ MÉTRIQUES IMPORTANTES ============
-
-Pour le trading, on s'intéresse à:
-- Precision: Quand on prédit BUY, est-ce vraiment un bon moment?
-- Recall: Capte-t-on toutes les bonnes opportunités?
-- F1-Score: Balance precision/recall
-- Profit Factor: Gains / Pertes (backtesting)
-"""
-import pandas as pd
-import numpy as np
-from typing import Tuple, Optional, Dict, Any
-from datetime import datetime
 import joblib
-import os
+import numpy as np
+import pandas as pd
+import xgboost as xgb
+from sklearn.metrics import balanced_accuracy_score, classification_report, confusion_matrix, f1_score
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import classification_report, confusion_matrix
-import xgboost as xgb
+from sklearn.utils.class_weight import compute_sample_weight
 
 from app.core.config import settings
 from app.ml.features import feature_engineering
 
 
+LABEL_TO_CLASS = {-1: 0, 0: 1, 1: 2}
+CLASS_TO_LABEL = {value: key for key, value in LABEL_TO_CLASS.items()}
+LABEL_NAMES = ["SELL", "HOLD", "BUY"]
+
+
 class TradingModel:
-    """
-    Modèle XGBoost pour la prédiction de signaux de trading
+    """Classifieur directionnel BTC avec validation chronologique purgée."""
 
-    ============ UTILISATION ============
-
-    # Entraînement
-    model = TradingModel()
-    model.train(df_historical)
-    model.save()
-
-    # Prédiction
-    model = TradingModel()
-    model.load()
-    signal = model.predict(df_current)
-    """
-
-    def __init__(self):
+    def __init__(self) -> None:
         self.model: Optional[xgb.XGBClassifier] = None
         self.scaler = StandardScaler()
-        self.feature_names: list = []
+        self.feature_names: list[str] = []
         self.is_trained = False
         self.metrics: Dict[str, Any] = {}
+
+    @property
+    def artifact_path(self) -> Path:
+        path = Path(settings.model_path)
+        return path if path.is_absolute() else Path(__file__).resolve().parents[2] / path
+
+    @property
+    def manifest_path(self) -> Path:
+        return self.artifact_path.with_suffix(".manifest.json")
+
+    @staticmethod
+    def _split_chronologically(
+        X: pd.DataFrame, y: pd.Series, *, horizon: int, validation_size: float, test_size: float
+    ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
+        """Split train/validation/test avec une zone purgée de ``horizon`` bougies."""
+        if not 0 < validation_size < 0.3 or not 0 < test_size < 0.3:
+            raise ValueError("validation_size et test_size doivent être comprises entre 0 et 0.3.")
+        n_rows = len(X)
+        validation_rows, test_rows = int(n_rows * validation_size), int(n_rows * test_size)
+        train_end = n_rows - validation_rows - test_rows - (2 * horizon)
+        validation_start = train_end + horizon
+        test_start = validation_start + validation_rows + horizon
+        if min(train_end, validation_rows, test_rows) < 300:
+            raise ValueError("Pas assez de données pour train/validation/test. Utilisez au moins 5 000 bougies.")
+        return (
+            X.iloc[:train_end], y.iloc[:train_end],
+            X.iloc[validation_start:test_start - horizon], y.iloc[validation_start:test_start - horizon],
+            X.iloc[test_start:], y.iloc[test_start:],
+        )
 
     def train(
         self,
         df: pd.DataFrame,
         horizon: int = 4,
-        threshold: float = 0.02,
-        test_size: float = 0.2
+        threshold: float = 0.004,
+        validation_size: float = 0.15,
+        test_size: float = 0.15,
+        grid_search: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Entraîner le modèle sur les données historiques
-
-        Args:
-            df: DataFrame OHLCV
-            horizon: Horizon de prédiction (nombre de périodes)
-            threshold: Seuil de variation pour labelling
-            test_size: Proportion des données pour le test
-
-        Returns:
-            Dict avec les métriques d'entraînement
-
-        ============ PROCESSUS D'ENTRAÎNEMENT ============
-
-        1. Préparation des données
-        2. Split temporel (important: pas de data leakage!)
-        3. Normalisation des features
-        4. Entraînement XGBoost
-        5. Évaluation sur données de test
-        """
-        print("🚀 Début de l'entraînement...")
-
-        # 1. Préparer les données
-        print("📊 Préparation des features...")
+        """Entraîne sur le passé, règle l'arrêt précoce sur validation, mesure sur test final."""
+        if horizon < 1:
+            raise ValueError("horizon doit être supérieur ou égal à 1.")
         X, y = feature_engineering.prepare_training_data(df, horizon, threshold)
+        if len(X) < 5_000:
+            raise ValueError(f"{len(X)} exemples disponibles : 5 000 minimum requis.")
+        if set(y.unique()) != {-1, 0, 1}:
+            raise ValueError("Les trois classes BUY/HOLD/SELL doivent être présentes. Réduisez le threshold ou augmentez l'historique.")
 
         self.feature_names = X.columns.tolist()
-        print(f"   - {len(self.feature_names)} features créées")
-        print(f"   - {len(X)} échantillons")
+        X_train, y_train, X_validation, y_validation, X_test, y_test = self._split_chronologically(
+            X, y, horizon=horizon, validation_size=validation_size, test_size=test_size
+        )
+        if set(y_train.unique()) != {-1, 0, 1}:
+            raise ValueError("Le jeu d'entraînement ne contient pas les trois classes. Ajustez le threshold.")
 
-        # Distribution des classes
-        class_dist = y.value_counts()
-        print(f"   - Distribution: BUY={class_dist.get(1, 0)}, HOLD={class_dist.get(0, 0)}, SELL={class_dist.get(-1, 0)}")
-
-        # 2. Split temporel (les dernières données pour le test)
-        split_idx = int(len(X) * (1 - test_size))
-        X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
-        y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
-
-        print(f"📈 Split: {len(X_train)} train, {len(X_test)} test")
-
-        # 3. Normalisation
-        print("🔄 Normalisation des features...")
         X_train_scaled = self.scaler.fit_transform(X_train)
+        X_validation_scaled = self.scaler.transform(X_validation)
         X_test_scaled = self.scaler.transform(X_test)
+        y_train_class = y_train.map(LABEL_TO_CLASS)
+        y_validation_class = y_validation.map(LABEL_TO_CLASS)
+        y_test_class = y_test.map(LABEL_TO_CLASS)
 
-        # 4. Configuration et entraînement XGBoost
-        print("🤖 Entraînement du modèle XGBoost...")
-
-        # Paramètres optimisés pour le trading
-        self.model = xgb.XGBClassifier(
-            n_estimators=200,
-            max_depth=6,
-            learning_rate=0.1,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            min_child_weight=3,
-            gamma=0.1,
-            reg_alpha=0.1,
-            reg_lambda=1,
-            objective='multi:softmax',
-            num_class=3,
-            eval_metric='mlogloss',
-            use_label_encoder=False,
-            random_state=42,
-            n_jobs=-1
-        )
-
-        # Mapper les labels pour XGBoost (doit être 0, 1, 2)
-        label_map = {-1: 0, 0: 1, 1: 2}
-        y_train_mapped = y_train.map(label_map)
-        y_test_mapped = y_test.map(label_map)
-
-        self.model.fit(
-            X_train_scaled, y_train_mapped,
-            eval_set=[(X_test_scaled, y_test_mapped)],
-            verbose=False
-        )
-
-        # 5. Évaluation
-        print("📊 Évaluation du modèle...")
-        y_pred_mapped = self.model.predict(X_test_scaled)
-
-        # Remapper vers les labels originaux
-        reverse_map = {0: -1, 1: 0, 2: 1}
-        y_pred = pd.Series(y_pred_mapped).map(reverse_map)
-        y_test_original = y_test.reset_index(drop=True)
-
-        # Métriques
-        report = classification_report(
-            y_test_original, y_pred,
-            target_names=['SELL', 'HOLD', 'BUY'],
-            output_dict=True
-        )
-
-        # Feature importance
-        importance = pd.DataFrame({
-            'feature': self.feature_names,
-            'importance': self.model.feature_importances_
-        }).sort_values('importance', ascending=False)
-
-        self.metrics = {
-            'classification_report': report,
-            'accuracy': report['accuracy'],
-            'top_features': importance.head(10).to_dict('records'),
-            'train_size': len(X_train),
-            'test_size': len(X_test),
-            'horizon': horizon,
-            'threshold': threshold,
-            'trained_at': datetime.now().isoformat()
+        base_parameters = {
+            "learning_rate": 0.03,
+            "max_depth": 4,
+            "min_child_weight": 8,
+            "subsample": 0.85,
+            "colsample_bytree": 0.85,
+            "reg_alpha": 0.05,
+            "reg_lambda": 2.0,
         }
+        tuning: Dict[str, Any] = {"enabled": grid_search}
+        if grid_search:
+            # Le test final reste totalement invisible. Chaque pli CV respecte l'ordre du temps
+            # et laisse une zone tampon de ``horizon`` bougies entre apprentissage et validation.
+            parameter_grid = {
+                "max_depth": [3, 4, 5],
+                "min_child_weight": [4, 8],
+                "subsample": [0.75, 0.90],
+                "colsample_bytree": [0.70, 0.90],
+                "reg_alpha": [0.0, 0.05],
+                "reg_lambda": [1.0, 3.0],
+            }
+            candidates = [dict(zip(parameter_grid, values)) for values in product(*parameter_grid.values())]
+            cv = TimeSeriesSplit(n_splits=4, gap=horizon)
+            results = []
+            for candidate_number, candidate in enumerate(candidates, start=1):
+                fold_scores = []
+                for fold_train, fold_validation in cv.split(X_train):
+                    X_fold_train, X_fold_validation = X_train.iloc[fold_train], X_train.iloc[fold_validation]
+                    y_fold_train, y_fold_validation = y_train_class.iloc[fold_train], y_train_class.iloc[fold_validation]
+                    candidate_model = xgb.XGBClassifier(
+                        objective="multi:softprob", num_class=3, n_estimators=500,
+                        learning_rate=base_parameters["learning_rate"], eval_metric="mlogloss",
+                        # Une seule exécution à la fois : la grille comporte déjà 384 fits.
+                        random_state=42, n_jobs=1, tree_method="hist", **candidate,
+                    )
+                    candidate_model.fit(
+                        X_fold_train, y_fold_train,
+                        sample_weight=compute_sample_weight(class_weight="balanced", y=y_fold_train),
+                        verbose=False,
+                    )
+                    fold_scores.append(float(f1_score(y_fold_validation, candidate_model.predict(X_fold_validation), average="macro", zero_division=0)))
+                results.append({"params": candidate, "mean_cv_macro_f1": float(np.mean(fold_scores))})
+                if candidate_number % 12 == 0:
+                    print(f"Grid search XGBoost : {candidate_number}/{len(candidates)} candidats évalués")
+            results.sort(key=lambda result: result["mean_cv_macro_f1"], reverse=True)
+            base_parameters.update(results[0]["params"])
+            tuning.update({
+                "cv_splits": 4,
+                "scoring": "f1_macro",
+                "candidates": len(candidates),
+                "best_cv_macro_f1": results[0]["mean_cv_macro_f1"],
+                "best_params": results[0]["params"],
+                "top_candidates": results[:5],
+            })
 
+        self.model = xgb.XGBClassifier(
+            objective="multi:softprob",
+            num_class=3,
+            n_estimators=1_200,
+            **base_parameters,
+            eval_metric="mlogloss",
+            early_stopping_rounds=60,
+            random_state=42,
+            n_jobs=-1,
+            tree_method="hist",
+        )
+        self.model.fit(
+            X_train_scaled,
+            y_train_class,
+            sample_weight=compute_sample_weight(class_weight="balanced", y=y_train_class),
+            eval_set=[(X_validation_scaled, y_validation_class)],
+            verbose=False,
+        )
+
+        predicted_classes = self.model.predict(X_test_scaled).astype(int)
+        y_pred = pd.Series(predicted_classes).map(CLASS_TO_LABEL).to_numpy()
+        report = classification_report(y_test, y_pred, labels=[-1, 0, 1], target_names=LABEL_NAMES, output_dict=True, zero_division=0)
+        importance = pd.DataFrame({"feature": self.feature_names, "importance": self.model.feature_importances_}).sort_values("importance", ascending=False)
+        best_iteration = int(getattr(self.model, "best_iteration", self.model.n_estimators))
+        self.metrics = {
+            "schema_version": 2,
+            "trained_at": datetime.now(timezone.utc).isoformat(),
+            "symbol": "BTCUSDT",
+            "timeframe": "1h",
+            "horizon_candles": horizon,
+            "threshold": threshold,
+            "source_rows": int(len(df)),
+            "feature_count": len(self.feature_names),
+            "splits": {
+                "train": int(len(X_train)), "validation": int(len(X_validation)), "test": int(len(X_test)), "purge_gap_candles": horizon,
+                "train_end": str(X_train.index[-1]), "validation_start": str(X_validation.index[0]), "test_start": str(X_test.index[0]),
+            },
+            "class_distribution": {name: int((y_train == label).sum()) for name, label in (("SELL", -1), ("HOLD", 0), ("BUY", 1))},
+            "test_metrics": {
+                "accuracy": float(report["accuracy"]),
+                "balanced_accuracy": float(balanced_accuracy_score(y_test, y_pred)),
+                "macro_f1": float(f1_score(y_test, y_pred, average="macro", zero_division=0)),
+                "classification_report": report,
+                "confusion_matrix": confusion_matrix(y_test, y_pred, labels=[-1, 0, 1]).tolist(),
+            },
+            "best_iteration": best_iteration,
+            "hyperparameter_search": tuning,
+            "top_features": importance.head(15).to_dict("records"),
+        }
+        # Compatibilité avec l'UI et les anciennes réponses API.
+        self.metrics["accuracy"] = self.metrics["test_metrics"]["accuracy"]
+        self.metrics["classification_report"] = report
+        self.metrics["train_size"] = len(X_train)
+        self.metrics["test_size"] = len(X_test)
         self.is_trained = True
-
-        print(f"✅ Entraînement terminé!")
-        print(f"   - Accuracy: {report['accuracy']:.2%}")
-        print(f"   - Top 3 features: {', '.join(importance['feature'].head(3))}")
-
         return self.metrics
 
-    def predict(self, df: pd.DataFrame) -> Tuple[int, float, Dict]:
-        """
-        Prédire le signal pour les données actuelles
-
-        Args:
-            df: DataFrame OHLCV récent
-
-        Returns:
-            Tuple (signal, confidence, probabilities)
-            - signal: 1 (BUY), 0 (HOLD), -1 (SELL)
-            - confidence: Probabilité de la prédiction
-            - probabilities: Dict avec toutes les probabilités
-
-        ============ PROCESSUS DE PRÉDICTION ============
-
-        1. Créer les features à partir des données actuelles
-        2. Normaliser avec le même scaler que l'entraînement
-        3. Faire la prédiction
-        4. Calculer la confiance
-        """
-        if not self.is_trained:
+    def predict(self, df: pd.DataFrame) -> Tuple[int, float, Dict[str, float]]:
+        if not self.is_trained or self.model is None:
             raise ValueError("Le modèle n'est pas entraîné. Appelez train() d'abord.")
-
-        # Créer les features
         features = feature_engineering.create_features(df)
-
-        # Prendre la dernière ligne (données les plus récentes)
-        X = features[self.feature_names].iloc[[-1]]
-
-        # Vérifier les NaN
-        if X.isna().any().any():
-            # Remplacer les NaN par la médiane ou 0
-            X = X.fillna(0)
-
-        # Normaliser
-        X_scaled = self.scaler.transform(X)
-
-        # Prédire
-        pred_mapped = self.model.predict(X_scaled)[0]
-        proba = self.model.predict_proba(X_scaled)[0]
-
-        # Remapper
-        reverse_map = {0: -1, 1: 0, 2: 1}
-        signal = reverse_map[pred_mapped]
-        confidence = max(proba) * 100
-
-        probabilities = {
-            'SELL': proba[0] * 100,
-            'HOLD': proba[1] * 100,
-            'BUY': proba[2] * 100
+        missing = set(self.feature_names) - set(features.columns)
+        if missing:
+            raise ValueError(f"Features manquantes pour la prédiction : {sorted(missing)}")
+        X = features[self.feature_names].iloc[[-1]].replace([np.inf, -np.inf], np.nan).fillna(0)
+        probabilities = self.model.predict_proba(self.scaler.transform(X))[0]
+        predicted_class = int(np.argmax(probabilities))
+        return CLASS_TO_LABEL[predicted_class], float(probabilities[predicted_class] * 100), {
+            "SELL": float(probabilities[0] * 100), "HOLD": float(probabilities[1] * 100), "BUY": float(probabilities[2] * 100),
         }
 
-        return signal, confidence, probabilities
-
-    def save(self, path: Optional[str] = None):
-        """Sauvegarder le modèle"""
-        if not self.is_trained:
+    def save(self, path: Optional[str] = None) -> Path:
+        if not self.is_trained or self.model is None:
             raise ValueError("Aucun modèle à sauvegarder")
+        artifact = Path(path) if path else self.artifact_path
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"model": self.model, "scaler": self.scaler, "feature_names": self.feature_names, "metrics": self.metrics}
+        temporary = artifact.with_suffix(artifact.suffix + ".tmp")
+        joblib.dump(payload, temporary)
+        temporary.replace(artifact)
+        if artifact == self.artifact_path:
+            self.manifest_path.write_text(json.dumps(self.metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+        return artifact
 
-        path = path or settings.model_path
-
-        # Créer le dossier si nécessaire
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-
-        # Sauvegarder le modèle et le scaler
-        model_data = {
-            'model': self.model,
-            'scaler': self.scaler,
-            'feature_names': self.feature_names,
-            'metrics': self.metrics
-        }
-
-        joblib.dump(model_data, path)
-        print(f"✅ Modèle sauvegardé: {path}")
-
-    def load(self, path: Optional[str] = None):
-        """Charger un modèle sauvegardé"""
-        path = path or settings.model_path
-
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Modèle non trouvé: {path}")
-
-        model_data = joblib.load(path)
-
-        self.model = model_data['model']
-        self.scaler = model_data['scaler']
-        self.feature_names = model_data['feature_names']
-        self.metrics = model_data['metrics']
+    def load(self, path: Optional[str] = None) -> None:
+        artifact = Path(path) if path else self.artifact_path
+        if not artifact.exists():
+            raise FileNotFoundError(f"Modèle non trouvé: {artifact}")
+        payload = joblib.load(artifact)
+        self.model, self.scaler = payload["model"], payload["scaler"]
+        self.feature_names, self.metrics = payload["feature_names"], payload["metrics"]
         self.is_trained = True
 
-        print(f"✅ Modèle chargé: {path}")
-        print(f"   - Accuracy: {self.metrics.get('accuracy', 'N/A'):.2%}")
-
     def get_feature_importance(self, top_n: int = 10) -> pd.DataFrame:
-        """Obtenir l'importance des features"""
-        if not self.is_trained:
+        if not self.is_trained or self.model is None:
             raise ValueError("Le modèle n'est pas entraîné")
-
-        importance = pd.DataFrame({
-            'feature': self.feature_names,
-            'importance': self.model.feature_importances_
-        }).sort_values('importance', ascending=False)
-
-        return importance.head(top_n)
+        return pd.DataFrame({"feature": self.feature_names, "importance": self.model.feature_importances_}).sort_values("importance", ascending=False).head(top_n)
 
 
-# Instance singleton
 trading_model = TradingModel()

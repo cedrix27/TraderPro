@@ -52,9 +52,9 @@ async def main():
     # Configuration
     symbol = "BTCUSDT"
     timeframe = "1h"
-    days = 90
+    days = 365
     horizon = 4
-    threshold = 0.02
+    threshold = 0.004
 
     print(f"""
 Configuration:
@@ -87,18 +87,16 @@ Configuration:
 
         # 2. Entraîner le modèle
         print("\n🤖 Entraînement du modèle...")
-        metrics = model.train(
-            df,
-            horizon=horizon,
-            threshold=threshold
-        )
+        metrics = model.train(df, horizon=horizon, threshold=threshold, grid_search=True)
 
         # 3. Afficher les résultats
         print("\n" + "=" * 60)
         print("📊 RÉSULTATS DE L'ENTRAÎNEMENT")
         print("=" * 60)
         print(f"""
-Accuracy: {metrics['accuracy']:.2%}
+Accuracy test: {metrics['test_metrics']['accuracy']:.2%}
+Balanced accuracy test: {metrics['test_metrics']['balanced_accuracy']:.2%}
+Macro F1 test: {metrics['test_metrics']['macro_f1']:.2%}
 
 Classification Report:
 - BUY:  Precision={metrics['classification_report']['BUY']['precision']:.2f}, Recall={metrics['classification_report']['BUY']['recall']:.2f}

@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { chatApi, ChatResponse, ApiError } from "@/lib/api";
+import { chatApi, ApiError } from "@/lib/api";
 
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  analysis?: any;
-  signal?: any;
+  analysis?: unknown;
+  signal?: unknown;
 }
 
 interface UseChatReturn {

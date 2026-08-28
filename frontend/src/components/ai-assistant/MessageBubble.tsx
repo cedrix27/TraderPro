@@ -69,7 +69,7 @@ function formatMessage(content: string): React.ReactNode {
 
   return lines.map((line, index) => {
     // Bold text
-    let formattedLine: React.ReactNode = line.replace(
+    const formattedLine = line.replace(
       /\*\*(.*?)\*\*/g,
       '<strong class="font-semibold">$1</strong>'
     );

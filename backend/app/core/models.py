@@ -55,6 +55,23 @@ class MarketData(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
+class MarketIntelligence(BaseModel):
+    """Contexte Futures public utilisé pour expliquer, puis améliorer, les décisions."""
+    symbol: str
+    price: float
+    day_change_pct: float
+    funding_rate_pct: float
+    open_interest: float
+    open_interest_change_pct: Optional[float] = None
+    volatility_pct: float
+    regime: Literal["trend_up", "trend_down", "range", "high_volatility"]
+    bias: Literal["bullish", "bearish", "neutral"]
+    context_score: float = Field(ge=0, le=100)
+    recommendation: str
+    sources: List[str]
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
 # ============ Indicator Models ============
 
 class Indicator(BaseModel):
@@ -166,3 +183,64 @@ class ChatResponse(BaseModel):
     message: str
     analysis: Optional[TechnicalAnalysis] = None
     signal: Optional[TradingSignal] = None
+
+
+# ============ Paper Trading / Binance Testnet ============
+
+class DemoTradeRequest(BaseModel):
+    """Request a decision and, if applicable, a Binance Spot Testnet order."""
+    symbol: str = Field(default="BTCUSDT", min_length=5, max_length=20)
+    amount_usdt: float = Field(default=25, gt=0, le=10_000)
+    timeframe: str = "1h"
+
+
+class DemoDecision(BaseModel):
+    id: int
+    symbol: str
+    action: SignalType
+    confidence: float
+    amount_usdt: float
+    reasoning: List[str]
+    status: Literal["executed", "recorded", "rejected"]
+    rejection_reason: Optional[str] = None
+    created_at: datetime
+
+
+class DemoPosition(BaseModel):
+    id: int
+    decision_id: int
+    symbol: str
+    side: Literal["LONG", "SHORT"]
+    quantity: float
+    entry_price: float
+    amount_usdt: float
+    current_price: Optional[float] = None
+    unrealized_pnl_usdt: Optional[float] = None
+    opened_at: datetime
+
+
+class DemoTradeHistory(BaseModel):
+    id: int
+    decision_id: int
+    symbol: str
+    side: Literal["LONG", "SHORT"]
+    quantity: float
+    entry_price: float
+    exit_price: Optional[float] = None
+    amount_usdt: float
+    pnl_usdt: Optional[float] = None
+    status: Literal["open", "closed", "rejected"]
+    is_testnet: bool
+    leverage: int = 1
+    margin_mode: Literal["ISOLATED"] = "ISOLATED"
+    liquidation_price: Optional[float] = None
+    opened_at: datetime
+    closed_at: Optional[datetime] = None
+
+
+class DemoHistoryResponse(BaseModel):
+    mode: Literal["binance_usdt_m_futures_testnet"]
+    decisions: List[DemoDecision]
+    open_positions: List[DemoPosition]
+    trades: List[DemoTradeHistory]
+    realized_pnl_usdt: float

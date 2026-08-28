@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Bitcoin,
   LayoutDashboard,
   LineChart,
   BookOpen,
@@ -13,6 +12,9 @@ import {
   TrendingUp,
   TrendingDown,
   Brain,
+  History,
+  CandlestickChart,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -22,8 +24,11 @@ const mainNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/analysis", label: "Analyse Technique", icon: LineChart },
   { href: "/prediction", label: "Prediction IA", icon: Brain },
+  { href: "/fincept", label: "Fincept Workspace", icon: CandlestickChart },
+  { href: "/vibe", label: "Vibe Challenger", icon: FlaskConical },
   { href: "/plans", label: "Plans de Trading", icon: BookOpen },
   { href: "/assistant", label: "Assistant IA", icon: Bot },
+  { href: "/history", label: "Démo & Historique", icon: History },
 ];
 
 const bottomNavItems = [

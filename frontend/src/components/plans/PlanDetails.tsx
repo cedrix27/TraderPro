@@ -1,7 +1,6 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -116,7 +115,7 @@ export function PlanDetails({ plan }: PlanDetailsProps) {
                 <div>
                   <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
                     <TrendingUp className="h-4 w-4 text-green-500" />
-                    Règles d'Entrée
+                    Règles d&apos;Entrée
                   </h4>
                   <div className="space-y-2">
                     {strategy.rules

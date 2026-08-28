@@ -1,0 +1,46 @@
+{
+  "model_type": "TTM (Tiny Time Mixer) V1",
+  "model_version": "1.0.0",
+  "base_model": "ibm-granite/granite-timeseries-ttm-v1",
+  "trained_at": "2026-01-19T17:15:56.625568",
+  "context_length": 512,
+  "forecast_length": 96,
+  "patch_length": 64,
+  "feature_columns": [
+    "Close",
+    "Open",
+    "High",
+    "Low",
+    "Returns",
+    "Returns_5d",
+    "Log_returns",
+    "Volatility_7d",
+    "Volatility_14d",
+    "RSI_norm",
+    "MACD_norm",
+    "BB_position",
+    "Price_SMA7_ratio",
+    "Price_SMA20_ratio",
+    "ATR_norm",
+    "Daily_range"
+  ],
+  "num_features": 16,
+  "target": "Close (price prediction + direction)",
+  "metrics": {
+    "mse": 0.23897373732148708,
+    "rmse": 0.488849401473999,
+    "mae": 0.488849401473999,
+    "r2_score": NaN,
+    "direction_accuracy": 1.0
+  },
+  "training": {
+    "epochs": 30,
+    "batch_size": 16,
+    "learning_rate": 5e-05,
+    "train_samples": 814,
+    "val_samples": 1,
+    "test_samples": 1,
+    "final_train_loss": 0.602553564113575,
+    "final_eval_loss": 0.514199435710907
+  }
+}

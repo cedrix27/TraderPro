@@ -1,0 +1,250 @@
+{
+  "schema_version": 2,
+  "trained_at": "2026-07-21T13:18:36.454461+00:00",
+  "symbol": "BTCUSDT",
+  "timeframe": "1h",
+  "horizon_candles": 4,
+  "threshold": 0.004,
+  "source_rows": 8760,
+  "feature_count": 51,
+  "splits": {
+    "train": 5983,
+    "validation": 1283,
+    "test": 1283,
+    "purge_gap_candles": 4,
+    "train_end": "2026-04-05 02:00:00",
+    "validation_start": "2026-04-05 07:00:00",
+    "test_start": "2026-05-28 22:00:00"
+  },
+  "class_distribution": {
+    "SELL": 1538,
+    "HOLD": 2965,
+    "BUY": 1480
+  },
+  "test_metrics": {
+    "accuracy": 0.45752143413873736,
+    "balanced_accuracy": 0.42931466745756436,
+    "macro_f1": 0.4284515014378396,
+    "classification_report": {
+      "SELL": {
+        "precision": 0.358974358974359,
+        "recall": 0.43874643874643876,
+        "f1-score": 0.39487179487179486,
+        "support": 351.0
+      },
+      "HOLD": {
+        "precision": 0.6733067729083665,
+        "recall": 0.5586776859504132,
+        "f1-score": 0.6106594399277326,
+        "support": 605.0
+      },
+      "BUY": {
+        "precision": 0.26988636363636365,
+        "recall": 0.290519877675841,
+        "f1-score": 0.27982326951399117,
+        "support": 327.0
+      },
+      "accuracy": 0.45752143413873736,
+      "macro avg": {
+        "precision": 0.43405583183969637,
+        "recall": 0.42931466745756436,
+        "f1-score": 0.4284515014378396,
+        "support": 1283.0
+      },
+      "weighted avg": {
+        "precision": 0.48449215784774163,
+        "recall": 0.45752143413873736,
+        "f1-score": 0.46730410778437514,
+        "support": 1283.0
+      }
+    },
+    "confusion_matrix": [
+      [
+        154,
+        70,
+        127
+      ],
+      [
+        137,
+        338,
+        130
+      ],
+      [
+        138,
+        94,
+        95
+      ]
+    ]
+  },
+  "best_iteration": 400,
+  "hyperparameter_search": {
+    "enabled": true,
+    "cv_splits": 4,
+    "scoring": "f1_macro",
+    "candidates": 96,
+    "best_cv_macro_f1": 0.40565619549724735,
+    "best_params": {
+      "max_depth": 4,
+      "min_child_weight": 8,
+      "subsample": 0.75,
+      "colsample_bytree": 0.9,
+      "reg_alpha": 0.05,
+      "reg_lambda": 3.0
+    },
+    "top_candidates": [
+      {
+        "params": {
+          "max_depth": 4,
+          "min_child_weight": 8,
+          "subsample": 0.75,
+          "colsample_bytree": 0.9,
+          "reg_alpha": 0.05,
+          "reg_lambda": 3.0
+        },
+        "mean_cv_macro_f1": 0.40565619549724735
+      },
+      {
+        "params": {
+          "max_depth": 3,
+          "min_child_weight": 8,
+          "subsample": 0.75,
+          "colsample_bytree": 0.7,
+          "reg_alpha": 0.05,
+          "reg_lambda": 3.0
+        },
+        "mean_cv_macro_f1": 0.40178902952761747
+      },
+      {
+        "params": {
+          "max_depth": 4,
+          "min_child_weight": 8,
+          "subsample": 0.9,
+          "colsample_bytree": 0.7,
+          "reg_alpha": 0.05,
+          "reg_lambda": 3.0
+        },
+        "mean_cv_macro_f1": 0.4003753278982859
+      },
+      {
+        "params": {
+          "max_depth": 4,
+          "min_child_weight": 8,
+          "subsample": 0.75,
+          "colsample_bytree": 0.7,
+          "reg_alpha": 0.0,
+          "reg_lambda": 3.0
+        },
+        "mean_cv_macro_f1": 0.4003749314030065
+      },
+      {
+        "params": {
+          "max_depth": 3,
+          "min_child_weight": 8,
+          "subsample": 0.75,
+          "colsample_bytree": 0.9,
+          "reg_alpha": 0.0,
+          "reg_lambda": 3.0
+        },
+        "mean_cv_macro_f1": 0.40029880624223924
+      }
+    ]
+  },
+  "top_features": [
+    {
+      "feature": "high_low_ratio",
+      "importance": 0.04783029109239578
+    },
+    {
+      "feature": "rsi_overbought",
+      "importance": 0.03168325871229172
+    },
+    {
+      "feature": "day_of_week",
+      "importance": 0.029531437903642654
+    },
+    {
+      "feature": "atr_ratio",
+      "importance": 0.029055673629045486
+    },
+    {
+      "feature": "bb_width",
+      "importance": 0.02604527398943901
+    },
+    {
+      "feature": "rsi_oversold",
+      "importance": 0.025862332433462143
+    },
+    {
+      "feature": "is_weekend",
+      "importance": 0.02575157955288887
+    },
+    {
+      "feature": "hour",
+      "importance": 0.0248691588640213
+    },
+    {
+      "feature": "above_ma_50",
+      "importance": 0.022731851786375046
+    },
+    {
+      "feature": "ma_200_distance",
+      "importance": 0.021985091269016266
+    },
+    {
+      "feature": "returns_std_20",
+      "importance": 0.021766679361462593
+    },
+    {
+      "feature": "price_min_20",
+      "importance": 0.02134682424366474
+    },
+    {
+      "feature": "ma_50_distance",
+      "importance": 0.02121102437376976
+    },
+    {
+      "feature": "returns_std_5",
+      "importance": 0.0210098959505558
+    },
+    {
+      "feature": "momentum_20",
+      "importance": 0.020641572773456573
+    }
+  ],
+  "accuracy": 0.45752143413873736,
+  "classification_report": {
+    "SELL": {
+      "precision": 0.358974358974359,
+      "recall": 0.43874643874643876,
+      "f1-score": 0.39487179487179486,
+      "support": 351.0
+    },
+    "HOLD": {
+      "precision": 0.6733067729083665,
+      "recall": 0.5586776859504132,
+      "f1-score": 0.6106594399277326,
+      "support": 605.0
+    },
+    "BUY": {
+      "precision": 0.26988636363636365,
+      "recall": 0.290519877675841,
+      "f1-score": 0.27982326951399117,
+      "support": 327.0
+    },
+    "accuracy": 0.45752143413873736,
+    "macro avg": {
+      "precision": 0.43405583183969637,
+      "recall": 0.42931466745756436,
+      "f1-score": 0.4284515014378396,
+      "support": 1283.0
+    },
+    "weighted avg": {
+      "precision": 0.48449215784774163,
+      "recall": 0.45752143413873736,
+      "f1-score": 0.46730410778437514,
+      "support": 1283.0
+    }
+  },
+  "train_size": 5983,
+  "test_size": 1283
+}

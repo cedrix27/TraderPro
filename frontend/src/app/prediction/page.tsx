@@ -1,19 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { usePrediction, usePredictionStatus, useApiHealth, useMarketData } from "@/hooks";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePrediction, usePredictionStatus, useApiHealth } from "@/hooks";
+import { predictionApi, TTMPrediction, TTMStatus, PredictionComparison } from "@/lib/api/client";
 import {
   TrendingUp,
   TrendingDown,
   RefreshCw,
   Calendar,
-  Clock,
   AlertCircle,
   WifiOff,
   Brain,
@@ -22,11 +23,12 @@ import {
   ArrowDown,
   Activity,
   Info,
-  CheckCircle2,
   XCircle,
   ShieldAlert,
   Eye,
-  Hand
+  Hand,
+  Cpu,
+  GitCompare
 } from "lucide-react";
 
 // Fonction pour formater le prix
@@ -35,6 +37,11 @@ function formatPrice(price: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function formatPercentMetric(metrics: Record<string, unknown>, key: string): string {
+  const value = metrics[key];
+  return typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "N/A";
 }
 
 // Fonction pour formater la date
@@ -52,11 +59,13 @@ function formatDate(dateStr: string): string {
 function DirectionSignal({
   direction,
   confidence,
-  strength
+  strength,
+  modelName
 }: {
   direction: "UP" | "DOWN";
   confidence: number;
   strength: string;
+  modelName?: string;
 }) {
   const isUp = direction === "UP";
 
@@ -76,7 +85,9 @@ function DirectionSignal({
             )}
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Prediction pour demain</p>
+            <p className="text-sm text-muted-foreground">
+              Prediction {modelName ? `(${modelName})` : ""} pour demain
+            </p>
             <p className={`text-3xl font-bold ${isUp ? "text-green-500" : "text-red-500"}`}>
               {isUp ? "HAUSSE" : "BAISSE"}
             </p>
@@ -152,13 +163,16 @@ function ProbabilityBars({ probabilities }: { probabilities: { UP: number; DOWN:
 
 // Composant pour la recommandation
 function RecommendationCard({
-  recommendation
+  recommendation,
 }: {
   recommendation: {
     action: string;
-    message: string;
-    risk_level: string;
-  }
+    message?: string;
+    text?: string;
+    risk_level?: string;
+    confidence_level?: string;
+    disclaimer?: string;
+  };
 }) {
   const getActionIcon = () => {
     switch (recommendation.action) {
@@ -167,6 +181,8 @@ function RecommendationCard({
       case "CONSIDER_SELL":
         return <TrendingDown className="h-5 w-5 text-red-500" />;
       case "WATCH":
+      case "HOLD_BULLISH":
+      case "HOLD_BEARISH":
         return <Eye className="h-5 w-5 text-yellow-500" />;
       default:
         return <Hand className="h-5 w-5 text-muted-foreground" />;
@@ -180,7 +196,10 @@ function RecommendationCard({
       case "CONSIDER_SELL":
         return "Considerer la vente";
       case "WATCH":
-        return "Surveiller";
+      case "HOLD_BULLISH":
+        return "Surveiller (haussier)";
+      case "HOLD_BEARISH":
+        return "Surveiller (baissier)";
       default:
         return "Attendre";
     }
@@ -193,15 +212,19 @@ function RecommendationCard({
       case "CONSIDER_SELL":
         return "bg-red-500/10 border-red-500/30 text-red-500";
       case "WATCH":
+      case "HOLD_BULLISH":
+      case "HOLD_BEARISH":
         return "bg-yellow-500/10 border-yellow-500/30 text-yellow-500";
       default:
         return "bg-muted border-border text-muted-foreground";
     }
   };
 
+  const riskLevel = recommendation.risk_level || recommendation.confidence_level || "MODERATE";
   const getRiskColor = () => {
-    switch (recommendation.risk_level) {
+    switch (riskLevel) {
       case "LOW":
+      case "STRONG":
         return "text-green-500";
       case "MODERATE":
         return "text-yellow-500";
@@ -209,6 +232,8 @@ function RecommendationCard({
         return "text-red-500";
     }
   };
+
+  const message = recommendation.message || recommendation.text || "";
 
   return (
     <Card>
@@ -224,14 +249,15 @@ function RecommendationCard({
           <span className="font-semibold text-lg">{getActionLabel()}</span>
         </div>
 
-        <p className="text-sm text-muted-foreground">{recommendation.message}</p>
+        <p className="text-sm text-muted-foreground">{message}</p>
 
         <div className="flex items-center gap-2 text-sm">
           <ShieldAlert className={`h-4 w-4 ${getRiskColor()}`} />
-          <span>Niveau de risque: </span>
+          <span>Niveau: </span>
           <span className={`font-semibold ${getRiskColor()}`}>
-            {recommendation.risk_level === "LOW" ? "Faible" :
-             recommendation.risk_level === "MODERATE" ? "Modere" : "Eleve"}
+            {riskLevel === "LOW" || riskLevel === "WEAK" ? "Faible" :
+             riskLevel === "MODERATE" ? "Modere" :
+             riskLevel === "STRONG" ? "Fort" : "Eleve"}
           </span>
         </div>
       </CardContent>
@@ -239,17 +265,242 @@ function RecommendationCard({
   );
 }
 
+// Composant pour le statut du modèle non disponible
+function ModelNotAvailable({ modelName, files, notebook }: { modelName: string; files: string[]; notebook: string }) {
+  return (
+    <Alert>
+      <Brain className="h-4 w-4" />
+      <AlertTitle>Modele {modelName} non disponible</AlertTitle>
+      <AlertDescription className="mt-2 space-y-4">
+        <p>
+          Le modele {modelName} n&apos;a pas ete trouve. Suivez ces etapes pour l&apos;activer :
+        </p>
+        <ol className="list-decimal list-inside space-y-2 text-sm">
+          <li>Ouvrez le fichier <code className="bg-muted px-1 rounded">{notebook}</code> dans Google Colab</li>
+          <li>Executez toutes les cellules pour entrainer le modele</li>
+          <li>Telechargez les fichiers generes</li>
+          <li>Placez-les dans le dossier indique</li>
+          <li>Redemarrez le backend</li>
+        </ol>
+        <div className="mt-4 p-3 bg-muted rounded-lg">
+          <p className="text-sm font-medium mb-2">Fichiers requis :</p>
+          <ul className="text-sm space-y-1">
+            {files.map((file) => (
+              <li key={file} className="flex items-center gap-2">
+                <XCircle className="h-4 w-4 text-red-500" />
+                {file}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+// Composant pour la comparaison des modèles
+function ModelComparison({ comparison }: { comparison: PredictionComparison }) {
+  const { predictions, consensus } = comparison;
+
+  return (
+    <div className="space-y-6">
+      {/* Consensus */}
+      {consensus && (
+        <Card className={`border-2 ${
+          consensus.agreement === "FULL"
+            ? "border-green-500/50 bg-green-500/5"
+            : consensus.agreement === "NONE"
+            ? "border-yellow-500/50 bg-yellow-500/5"
+            : "border-blue-500/50 bg-blue-500/5"
+        }`}>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <GitCompare className="h-5 w-5" />
+              Consensus des Modeles
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {consensus.agreement === "FULL" ? (
+              <div className="flex items-center gap-4">
+                <div className={`p-4 rounded-full ${consensus.direction === "UP" ? "bg-green-500/20" : "bg-red-500/20"}`}>
+                  {consensus.direction === "UP" ? (
+                    <ArrowUp className="h-10 w-10 text-green-500" />
+                  ) : (
+                    <ArrowDown className="h-10 w-10 text-red-500" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">
+                    {consensus.direction === "UP" ? "HAUSSE" : "BAISSE"}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Tous les modeles ({consensus.models_agreeing}) sont d&apos;accord
+                  </p>
+                  <p className="text-sm mt-1">
+                    Confiance moyenne: <span className="font-bold">{consensus.avg_confidence?.toFixed(1)}%</span>
+                  </p>
+                </div>
+              </div>
+            ) : consensus.agreement === "NONE" ? (
+              <div className="text-center py-4">
+                <AlertCircle className="h-10 w-10 text-yellow-500 mx-auto mb-2" />
+                <p className="text-lg font-semibold text-yellow-500">Signaux Contradictoires</p>
+                <p className="text-muted-foreground mt-1">{consensus.recommendation}</p>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <Info className="h-10 w-10 text-blue-500 mx-auto mb-2" />
+                <p className="text-lg font-semibold">Un seul modele disponible</p>
+                <p className="text-muted-foreground">
+                  Modele: {consensus.model?.toUpperCase()} - Direction: {consensus.direction}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Détails par modèle */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* LSTM */}
+        <Card className={predictions.lstm?.available ? "" : "opacity-50"}>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Brain className="h-5 w-5" />
+              LSTM
+            </CardTitle>
+            <CardDescription>Deep Learning (sequences)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {predictions.lstm?.available ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {predictions.lstm.direction === "UP" ? (
+                    <ArrowUp className="h-6 w-6 text-green-500" />
+                  ) : (
+                    <ArrowDown className="h-6 w-6 text-red-500" />
+                  )}
+                  <span className={`font-bold text-xl ${
+                    predictions.lstm.direction === "UP" ? "text-green-500" : "text-red-500"
+                  }`}>
+                    {predictions.lstm.direction}
+                  </span>
+                </div>
+                <Badge variant="outline">{predictions.lstm.confidence?.toFixed(1)}%</Badge>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{predictions.lstm?.error || "Non disponible"}</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* TTM */}
+        <Card className={predictions.ttm?.available ? "" : "opacity-50"}>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Cpu className="h-5 w-5" />
+              TTM
+            </CardTitle>
+            <CardDescription>Transformer (IBM)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {predictions.ttm?.available ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {predictions.ttm.direction === "UP" ? (
+                    <ArrowUp className="h-6 w-6 text-green-500" />
+                  ) : (
+                    <ArrowDown className="h-6 w-6 text-red-500" />
+                  )}
+                  <span className={`font-bold text-xl ${
+                    predictions.ttm.direction === "UP" ? "text-green-500" : "text-red-500"
+                  }`}>
+                    {predictions.ttm.direction}
+                  </span>
+                </div>
+                <Badge variant="outline">{predictions.ttm.confidence?.toFixed(1)}%</Badge>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{predictions.ttm?.error || "Non disponible"}</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // Composant principal
 export default function PredictionPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState("lstm");
   const { isConnected, isChecking } = useApiHealth();
-  const { status: predictionStatus } = usePredictionStatus();
-  const { prediction, isLoading, error, refresh } = usePrediction();
-  const { data: marketData } = useMarketData({ refreshInterval: 30000 });
+  const { status: lstmStatus } = usePredictionStatus();
+  const { prediction: lstmPrediction, isLoading: lstmLoading, error: lstmError, refresh: refreshLstm } = usePrediction();
+
+  // États TTM
+  const [ttmPrediction, setTtmPrediction] = useState<TTMPrediction | null>(null);
+  const [ttmStatus, setTtmStatus] = useState<TTMStatus | null>(null);
+  const [ttmLoading, setTtmLoading] = useState(false);
+  const [ttmError, setTtmError] = useState<string | null>(null);
+
+  // État comparaison
+  const [comparison, setComparison] = useState<PredictionComparison | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+
+  const loadTTMPrediction = useCallback(async () => {
+    setTtmLoading(true);
+    setTtmError(null);
+    try {
+      const pred = await predictionApi.getTTMPrediction();
+      setTtmPrediction(pred);
+    } catch (err: unknown) {
+      setTtmError(err instanceof Error ? err.message : "Erreur lors du chargement de la prediction TTM");
+    } finally {
+      setTtmLoading(false);
+    }
+  }, []);
+
+  const loadComparison = useCallback(async () => {
+    setComparisonLoading(true);
+    try {
+      const comp = await predictionApi.comparePredictions();
+      setComparison(comp);
+    } catch (err) {
+      console.error("Erreur comparaison:", err);
+    } finally {
+      setComparisonLoading(false);
+    }
+  }, []);
+
+  // Charger le statut TTM au démarrage
+  useEffect(() => {
+    if (isConnected) {
+      predictionApi.getTTMStatus().then(setTtmStatus).catch(() => {});
+    }
+  }, [isConnected]);
+
+  // Charger les données en fonction de l'onglet actif
+  useEffect(() => {
+    if (!isConnected) return;
+
+    if (activeTab === "ttm" && !ttmPrediction && !ttmLoading) {
+      loadTTMPrediction();
+    } else if (activeTab === "compare" && !comparison && !comparisonLoading) {
+      loadComparison();
+    }
+  }, [activeTab, comparison, comparisonLoading, isConnected, loadComparison, loadTTMPrediction, ttmLoading, ttmPrediction]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await refresh();
+    if (activeTab === "lstm") {
+      await refreshLstm();
+    } else if (activeTab === "ttm") {
+      await predictionApi.refreshTTM();
+      await loadTTMPrediction();
+    } else if (activeTab === "compare") {
+      await loadComparison();
+    }
     setIsRefreshing(false);
   };
 
@@ -272,61 +523,6 @@ export default function PredictionPage() {
     );
   }
 
-  // Si le modèle n'existe pas
-  if (!isLoading && predictionStatus && !predictionStatus.model_exists) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Prediction IA</h1>
-          <p className="text-muted-foreground">Prediction de la direction du BTC pour demain</p>
-        </div>
-
-        <Alert>
-          <Brain className="h-4 w-4" />
-          <AlertTitle>Modele non disponible</AlertTitle>
-          <AlertDescription className="mt-2 space-y-4">
-            <p>
-              Le modele LSTM n'a pas ete trouve. Suivez ces etapes pour l'activer :
-            </p>
-            <ol className="list-decimal list-inside space-y-2 text-sm">
-              <li>Ouvrez le fichier <code className="bg-muted px-1 rounded">colab_option_B_classification.ipynb</code> dans Google Colab</li>
-              <li>Executez toutes les cellules pour entrainer le modele</li>
-              <li>Telechargez les 3 fichiers generes</li>
-              <li>Placez-les dans <code className="bg-muted px-1 rounded">backend/app/ml/models/</code></li>
-              <li>Redemarrez le backend</li>
-            </ol>
-            <div className="mt-4 p-3 bg-muted rounded-lg">
-              <p className="text-sm font-medium mb-2">Fichiers requis :</p>
-              <ul className="text-sm space-y-1">
-                <li className="flex items-center gap-2">
-                  {predictionStatus?.model_exists ?
-                    <CheckCircle2 className="h-4 w-4 text-green-500" /> :
-                    <XCircle className="h-4 w-4 text-red-500" />
-                  }
-                  btc_lstm_model_B.keras
-                </li>
-                <li className="flex items-center gap-2">
-                  {predictionStatus?.scaler_exists ?
-                    <CheckCircle2 className="h-4 w-4 text-green-500" /> :
-                    <XCircle className="h-4 w-4 text-red-500" />
-                  }
-                  btc_scaler_B.pkl
-                </li>
-                <li className="flex items-center gap-2">
-                  {predictionStatus?.config_exists ?
-                    <CheckCircle2 className="h-4 w-4 text-green-500" /> :
-                    <XCircle className="h-4 w-4 text-red-500" />
-                  }
-                  training_config_B.json
-                </li>
-              </ul>
-            </div>
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -336,147 +532,265 @@ export default function PredictionPage() {
             <Brain className="h-6 w-6 text-primary" />
             Prediction IA
           </h1>
-          <p className="text-muted-foreground">Prediction de la direction du BTC par Deep Learning (LSTM)</p>
+          <p className="text-muted-foreground">Predictions multi-modeles pour le BTC</p>
         </div>
         <Button
           variant="outline"
           onClick={handleRefresh}
-          disabled={isLoading || isRefreshing}
+          disabled={lstmLoading || ttmLoading || isRefreshing}
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
           Actualiser
         </Button>
       </div>
 
-      {/* Erreur */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {/* Tabs pour les différents modèles */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="lstm" className="flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            LSTM
+          </TabsTrigger>
+          <TabsTrigger value="ttm" className="flex items-center gap-2">
+            <Cpu className="h-4 w-4" />
+            TTM (Transformer)
+          </TabsTrigger>
+          <TabsTrigger value="compare" className="flex items-center gap-2">
+            <GitCompare className="h-4 w-4" />
+            Comparaison
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Contenu principal */}
-      {isLoading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="h-[250px]" />
-          <Skeleton className="h-[250px]" />
-          <Skeleton className="h-[200px]" />
-          <Skeleton className="h-[200px]" />
-        </div>
-      ) : prediction ? (
-        <>
-          {/* Date et prix actuel */}
-          <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
-            <CardContent className="py-4">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <Calendar className="h-5 w-5 text-primary" />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Prediction pour</p>
-                    <p className="font-semibold">{formatDate(prediction.prediction_for)}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="text-sm text-muted-foreground">Prix actuel BTC</p>
-                    <p className="font-mono font-bold text-xl">${formatPrice(prediction.current_price.close)}</p>
-                  </div>
-                </div>
+        {/* Contenu LSTM */}
+        <TabsContent value="lstm" className="space-y-6">
+          {lstmError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{lstmError}</AlertDescription>
+            </Alert>
+          )}
+
+          {!lstmLoading && lstmStatus && !lstmStatus.model_exists ? (
+            <ModelNotAvailable
+              modelName="LSTM"
+              files={["btc_lstm_model_B.keras", "btc_scaler_B.pkl", "training_config_B.json"]}
+              notebook="colab_option_B_classification.ipynb"
+            />
+          ) : lstmLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-[200px]" />
+              <div className="grid grid-cols-2 gap-4">
+                <Skeleton className="h-[150px]" />
+                <Skeleton className="h-[150px]" />
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          ) : lstmPrediction ? (
+            <>
+              {/* Date et prix */}
+              <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20">
+                <CardContent className="py-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-5 w-5 text-primary" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Prediction pour</p>
+                        <p className="font-semibold">{formatDate(lstmPrediction.prediction_for)}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">Prix actuel BTC</p>
+                      <p className="font-mono font-bold text-xl">${formatPrice(lstmPrediction.current_price.close)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-          {/* Signal principal */}
-          <DirectionSignal
-            direction={prediction.prediction.direction}
-            confidence={prediction.prediction.confidence}
-            strength={prediction.prediction.signal_strength}
-          />
+              <DirectionSignal
+                direction={lstmPrediction.prediction.direction}
+                confidence={lstmPrediction.prediction.confidence}
+                strength={lstmPrediction.prediction.signal_strength}
+                modelName="LSTM"
+              />
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Probabilités */}
-            <ProbabilityBars probabilities={prediction.prediction.probabilities} />
-
-            {/* Recommandation */}
-            <RecommendationCard recommendation={prediction.recommendation} />
-          </div>
-
-          {/* Informations sur le modèle */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Info className="h-5 w-5" />
-                Informations du Modele
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <p className="text-xs text-muted-foreground mb-1">Type</p>
-                  <p className="font-medium text-sm">{prediction.model_info.type}</p>
-                </div>
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <p className="text-xs text-muted-foreground mb-1">Version</p>
-                  <p className="font-medium">{prediction.model_info.version}</p>
-                </div>
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <p className="text-xs text-muted-foreground mb-1">Sequence</p>
-                  <p className="font-medium">{prediction.model_info.sequence_length} jours</p>
-                </div>
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <p className="text-xs text-muted-foreground mb-1">Accuracy</p>
-                  <p className="font-medium">
-                    {prediction.model_info.metrics?.accuracy
-                      ? `${(prediction.model_info.metrics.accuracy * 100).toFixed(1)}%`
-                      : 'N/A'
-                    }
-                  </p>
-                </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ProbabilityBars probabilities={lstmPrediction.prediction.probabilities} />
+                <RecommendationCard recommendation={lstmPrediction.recommendation} />
               </div>
 
-              {/* Performance du modèle */}
-              {prediction.model_info.metrics && (
-                <div className="mt-4 pt-4 border-t">
-                  <p className="text-sm font-medium mb-3">Performance du modele</p>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div className="text-center p-2 bg-muted/30 rounded">
-                      <p className="text-xs text-muted-foreground">Accuracy</p>
-                      <p className="font-mono text-sm font-bold text-green-500">
-                        {(prediction.model_info.metrics.accuracy * 100).toFixed(2)}%
-                      </p>
+              {/* Info modèle */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Info className="h-5 w-5" />
+                    Modele LSTM
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">Type</p>
+                      <p className="font-medium text-sm">{lstmPrediction.model_info.type}</p>
                     </div>
-                    <div className="text-center p-2 bg-muted/30 rounded">
-                      <p className="text-xs text-muted-foreground">F1-Score</p>
-                      <p className="font-mono text-sm">
-                        {(prediction.model_info.metrics.f1_score * 100).toFixed(2)}%
-                      </p>
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">Version</p>
+                      <p className="font-medium">{lstmPrediction.model_info.version}</p>
                     </div>
-                    <div className="text-center p-2 bg-muted/30 rounded">
-                      <p className="text-xs text-muted-foreground">vs Random</p>
-                      <p className="font-mono text-sm text-primary">
-                        +{(prediction.model_info.metrics.improvement_over_random * 100).toFixed(2)}%
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">Sequence</p>
+                      <p className="font-medium">{lstmPrediction.model_info.sequence_length} jours</p>
+                    </div>
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">Accuracy</p>
+                      <p className="font-medium">
+                        {formatPercentMetric(lstmPrediction.model_info.metrics, "accuracy")}
                       </p>
                     </div>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : null}
+        </TabsContent>
+
+        {/* Contenu TTM */}
+        <TabsContent value="ttm" className="space-y-6">
+          {ttmError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{ttmError}</AlertDescription>
+            </Alert>
+          )}
+
+          {!ttmLoading && ttmStatus && !ttmStatus.model_exists ? (
+            <ModelNotAvailable
+              modelName="TTM (Tiny Time Mixer)"
+              files={ttmStatus.required_files || ["config.json", "model.safetensors", "preprocessor.pkl", "ttm_config.json"]}
+              notebook="colab_ttm_finetuning.ipynb"
+            />
+          ) : ttmLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-[200px]" />
+              <div className="grid grid-cols-2 gap-4">
+                <Skeleton className="h-[150px]" />
+                <Skeleton className="h-[150px]" />
+              </div>
+            </div>
+          ) : ttmPrediction ? (
+            <>
+              {/* Date et prix */}
+              <Card className="bg-gradient-to-r from-purple-500/10 to-purple-500/5 border-purple-500/20">
+                <CardContent className="py-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-5 w-5 text-purple-500" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Prediction TTM pour</p>
+                        <p className="font-semibold">{formatDate(ttmPrediction.prediction_for)}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">Prix actuel BTC</p>
+                      <p className="font-mono font-bold text-xl">${formatPrice(ttmPrediction.current_price.close)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <DirectionSignal
+                direction={ttmPrediction.prediction.direction}
+                confidence={ttmPrediction.prediction.confidence}
+                strength={ttmPrediction.prediction.signal_strength}
+                modelName="TTM"
+              />
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ProbabilityBars probabilities={ttmPrediction.prediction.probabilities} />
+                <RecommendationCard recommendation={ttmPrediction.recommendation} />
+              </div>
+
+              {/* Info modèle TTM */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Cpu className="h-5 w-5" />
+                    Modele TTM (Tiny Time Mixer)
+                  </CardTitle>
+                  <CardDescription>Transformer d&apos;IBM pour les series temporelles</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">Type</p>
+                      <p className="font-medium text-sm">{ttmPrediction.model_info.type}</p>
+                    </div>
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">Base</p>
+                      <p className="font-medium text-xs truncate">{ttmPrediction.model_info.base_model}</p>
+                    </div>
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">Context</p>
+                      <p className="font-medium">{ttmPrediction.model_info.context_length} jours</p>
+                    </div>
+                    <div className="p-3 bg-muted/50 rounded-lg">
+                      <p className="text-xs text-muted-foreground mb-1">Direction Acc.</p>
+                      <p className="font-medium">
+                        {formatPercentMetric(ttmPrediction.model_info.metrics, "direction_accuracy")}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Disclaimer TTM */}
+              {ttmPrediction.recommendation.disclaimer && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{ttmPrediction.recommendation.disclaimer}</AlertDescription>
+                </Alert>
               )}
-            </CardContent>
-          </Card>
+            </>
+          ) : (
+            <div className="text-center py-8">
+              <Cpu className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">Cliquez sur Actualiser pour charger la prediction TTM</p>
+            </div>
+          )}
+        </TabsContent>
 
-          {/* Avertissement */}
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Avertissement</AlertTitle>
-            <AlertDescription>
-              Les predictions sont generees par un modele de deep learning avec une accuracy de ~54%.
-              Ce n'est pas un conseil financier. Le modele a battu le Buy & Hold de +11.87% en backtest,
-              mais les performances passees ne garantissent pas les resultats futurs.
-              Faites toujours vos propres recherches.
-            </AlertDescription>
-          </Alert>
-        </>
-      ) : null}
+        {/* Contenu Comparaison */}
+        <TabsContent value="compare" className="space-y-6">
+          {comparisonLoading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-[150px]" />
+              <div className="grid grid-cols-2 gap-4">
+                <Skeleton className="h-[120px]" />
+                <Skeleton className="h-[120px]" />
+              </div>
+            </div>
+          ) : comparison ? (
+            <ModelComparison comparison={comparison} />
+          ) : (
+            <div className="text-center py-8">
+              <GitCompare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">Cliquez sur Actualiser pour comparer les modeles</p>
+              <Button variant="outline" className="mt-4" onClick={loadComparison}>
+                Charger la comparaison
+              </Button>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Avertissement global */}
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Avertissement</AlertTitle>
+        <AlertDescription>
+          Les predictions sont generees par des modeles d&apos;intelligence artificielle.
+          Ce n&apos;est pas un conseil financier. Les performances passees ne garantissent pas les resultats futurs.
+          Faites toujours vos propres recherches avant de prendre des decisions d&apos;investissement.
+        </AlertDescription>
+      </Alert>
     </div>
   );
 }

@@ -11,6 +11,12 @@ interface SignalCardProps {
   signal: TradingSignal;
 }
 
+const signalIcons = {
+  BUY: TrendingUp,
+  SELL: TrendingDown,
+  HOLD: Minus,
+} as const;
+
 export function SignalCard({ signal }: SignalCardProps) {
   const getSignalColor = (action: string) => {
     switch (action) {
@@ -23,18 +29,7 @@ export function SignalCard({ signal }: SignalCardProps) {
     }
   };
 
-  const getSignalIcon = (action: string) => {
-    switch (action) {
-      case "BUY":
-        return TrendingUp;
-      case "SELL":
-        return TrendingDown;
-      default:
-        return Minus;
-    }
-  };
-
-  const SignalIcon = getSignalIcon(signal.action);
+  const SignalIcon = signalIcons[signal.action as keyof typeof signalIcons] ?? Minus;
 
   return (
     <Card>

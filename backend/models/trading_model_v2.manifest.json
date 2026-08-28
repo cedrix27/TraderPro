@@ -1,0 +1,311 @@
+{
+  "schema_version": 3,
+  "trained_at": "2026-07-21T15:08:54.472287+00:00",
+  "symbol": "BTCUSDT",
+  "timeframe": "1h",
+  "horizon_candles": 12,
+  "atr_multiplier": 1.5,
+  "source_rows": 43793,
+  "feature_count": 51,
+  "execution_filter": {
+    "round_trip_cost": 0.0012,
+    "min_edge": 0.0015,
+    "min_confidence": 0.55
+  },
+  "splits": {
+    "train": 30473,
+    "validation": 6534,
+    "test": 6534,
+    "purge_gap_candles": 12,
+    "test_start": "2025-10-21 10:00:00"
+  },
+  "prediction_metrics": {
+    "return_mae": 0.01179227075228735,
+    "label_accuracy": 0.44490358126721763,
+    "label_balanced_accuracy": 0.4799308283367966,
+    "label_macro_f1": 0.4518269533739206
+  },
+  "backtest": {
+    "trades": 0,
+    "net_return": 0.0,
+    "sharpe": 0.0,
+    "max_drawdown": 0.0,
+    "profit_factor": 0.0,
+    "win_rate": 0.0
+  },
+  "walk_forward": {
+    "method": "rolling_3y_train__30d_validation__30d_test",
+    "folds": [
+      {
+        "test_start": "2024-08-30 11:00:00",
+        "test_end": "2024-09-29 10:00:00",
+        "min_confidence": 0.55,
+        "min_edge": 0.0015,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2024-09-29 11:00:00",
+        "test_end": "2024-10-29 10:00:00",
+        "min_confidence": 0.55,
+        "min_edge": 0.0015,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2024-10-29 11:00:00",
+        "test_end": "2024-11-28 10:00:00",
+        "min_confidence": 0.45,
+        "min_edge": 0.0,
+        "trades": 14,
+        "net_return": 0.08743830741321479,
+        "sharpe": 7.556800346934041,
+        "max_drawdown": 0.059654671376506374,
+        "profit_factor": 2.0812483253158116,
+        "win_rate": 0.5
+      },
+      {
+        "test_start": "2024-11-28 11:00:00",
+        "test_end": "2024-12-28 10:00:00",
+        "min_confidence": 0.45,
+        "min_edge": 0.0002,
+        "trades": 18,
+        "net_return": 0.010413253431624803,
+        "sharpe": 1.031413753824122,
+        "max_drawdown": 0.08547525569400238,
+        "profit_factor": 1.1021261695782778,
+        "win_rate": 0.4444444444444444
+      },
+      {
+        "test_start": "2024-12-28 11:00:00",
+        "test_end": "2025-01-27 10:00:00",
+        "min_confidence": 0.45,
+        "min_edge": 0.0002,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2025-01-27 11:00:00",
+        "test_end": "2025-02-26 10:00:00",
+        "min_confidence": 0.45,
+        "min_edge": 0.0002,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2025-02-26 11:00:00",
+        "test_end": "2025-03-28 10:00:00",
+        "min_confidence": 0.35,
+        "min_edge": 0.0,
+        "trades": 36,
+        "net_return": 0.0025894216639152923,
+        "sharpe": 0.48975325365309785,
+        "max_drawdown": 0.10748480473486399,
+        "profit_factor": 1.0469197000796333,
+        "win_rate": 0.4444444444444444
+      },
+      {
+        "test_start": "2025-03-28 11:00:00",
+        "test_end": "2025-04-27 10:00:00",
+        "min_confidence": 0.35,
+        "min_edge": 0.0,
+        "trades": 1,
+        "net_return": 0.034049503421471394,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": Infinity,
+        "win_rate": 1.0
+      },
+      {
+        "test_start": "2025-04-27 11:00:00",
+        "test_end": "2025-05-27 10:00:00",
+        "min_confidence": 0.45,
+        "min_edge": 0.0,
+        "trades": 9,
+        "net_return": 0.01843807641618489,
+        "sharpe": 4.199882958097737,
+        "max_drawdown": 0.024245658429511874,
+        "profit_factor": 1.4259569712633067,
+        "win_rate": 0.4444444444444444
+      },
+      {
+        "test_start": "2025-05-27 11:00:00",
+        "test_end": "2025-06-26 10:00:00",
+        "min_confidence": 0.55,
+        "min_edge": 0.0015,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2025-06-26 11:00:00",
+        "test_end": "2025-07-26 10:00:00",
+        "min_confidence": 0.55,
+        "min_edge": 0.0015,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2025-07-26 11:00:00",
+        "test_end": "2025-08-25 10:00:00",
+        "min_confidence": 0.55,
+        "min_edge": 0.0015,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2025-08-25 11:00:00",
+        "test_end": "2025-09-24 10:00:00",
+        "min_confidence": 0.55,
+        "min_edge": 0.0015,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2025-09-24 11:00:00",
+        "test_end": "2025-10-24 10:00:00",
+        "min_confidence": 0.55,
+        "min_edge": 0.0015,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2025-10-24 11:00:00",
+        "test_end": "2025-11-23 10:00:00",
+        "min_confidence": 0.55,
+        "min_edge": 0.0015,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2025-11-23 11:00:00",
+        "test_end": "2025-12-23 10:00:00",
+        "min_confidence": 0.5,
+        "min_edge": 0.0002,
+        "trades": 15,
+        "net_return": -0.12333756325055023,
+        "sharpe": -8.93284060387781,
+        "max_drawdown": 0.13644293085026127,
+        "profit_factor": 0.4148403513366202,
+        "win_rate": 0.4666666666666667
+      },
+      {
+        "test_start": "2025-12-23 11:00:00",
+        "test_end": "2026-01-22 10:00:00",
+        "min_confidence": 0.35,
+        "min_edge": 0.0,
+        "trades": 5,
+        "net_return": -0.06508125499993767,
+        "sharpe": -51.16566246175155,
+        "max_drawdown": 0.06508125499993767,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2026-01-22 11:00:00",
+        "test_end": "2026-02-21 10:00:00",
+        "min_confidence": 0.35,
+        "min_edge": 0.0,
+        "trades": 1,
+        "net_return": 0.016351834422123623,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": Infinity,
+        "win_rate": 1.0
+      },
+      {
+        "test_start": "2026-02-21 11:00:00",
+        "test_end": "2026-03-23 10:00:00",
+        "min_confidence": 0.35,
+        "min_edge": 0.001,
+        "trades": 2,
+        "net_return": -0.0322939888083873,
+        "sharpe": -38.25376968717287,
+        "max_drawdown": 0.0322939888083873,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "test_start": "2026-03-23 11:00:00",
+        "test_end": "2026-04-22 10:00:00",
+        "min_confidence": 0.4,
+        "min_edge": 0.0002,
+        "trades": 5,
+        "net_return": 0.026234103793790986,
+        "sharpe": 12.382294618645101,
+        "max_drawdown": 0.014236938376048336,
+        "profit_factor": 2.846709925003353,
+        "win_rate": 0.8
+      },
+      {
+        "test_start": "2026-04-22 11:00:00",
+        "test_end": "2026-05-22 10:00:00",
+        "min_confidence": 0.4,
+        "min_edge": 0.0,
+        "trades": 22,
+        "net_return": -0.056874890910147635,
+        "sharpe": -7.4085130214932695,
+        "max_drawdown": 0.07017380878520463,
+        "profit_factor": 0.5040670047103597,
+        "win_rate": 0.4090909090909091
+      },
+      {
+        "test_start": "2026-05-22 11:00:00",
+        "test_end": "2026-06-21 10:00:00",
+        "min_confidence": 0.55,
+        "min_edge": 0.0015,
+        "trades": 0,
+        "net_return": 0.0,
+        "sharpe": 0.0,
+        "max_drawdown": 0.0,
+        "profit_factor": 0.0,
+        "win_rate": 0.0
+      }
+    ],
+    "aggregate": {
+      "fold_count": 22,
+      "trades": 128,
+      "net_return": -0.09486727152321095,
+      "max_drawdown": 0.21979356088369362
+    }
+  }
+}

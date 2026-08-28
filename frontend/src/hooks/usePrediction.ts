@@ -17,7 +17,7 @@ interface UsePredictionReturn {
   prediction: LSTMPrediction | null;
   isLoading: boolean;
   error: string | null;
-  errorDetails: any | null;
+  errorDetails: unknown | null;
   refresh: () => Promise<void>;
 }
 
@@ -30,7 +30,7 @@ export function usePrediction(options: UsePredictionOptions = {}): UsePrediction
   const [prediction, setPrediction] = useState<LSTMPrediction | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [errorDetails, setErrorDetails] = useState<any | null>(null);
+  const [errorDetails, setErrorDetails] = useState<unknown | null>(null);
 
   const fetchData = useCallback(async () => {
     try {

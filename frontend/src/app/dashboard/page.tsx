@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { PriceCard, SignalCard, IndicatorsPanel, MarketOverview } from "@/components/dashboard";
+import { PriceCard, SignalCard, IndicatorsPanel, MarketOverview, MarketIntelligenceCard } from "@/components/dashboard";
 import { TradingChart } from "@/components/charts";
-import { useMarketData, useAnalysis, useApiHealth, useKlines } from "@/hooks";
+import { useMarketData, useAnalysis, useApiHealth, useKlines, useMarketIntelligence } from "@/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, WifiOff } from "lucide-react";
@@ -38,6 +38,7 @@ export default function DashboardPage() {
     interval: chartTimeframe,
     limit: 100,
   });
+  const { data: intelligence, isLoading: intelligenceLoading } = useMarketIntelligence();
 
   // Si le backend n'est pas connecté
   if (!isChecking && !isConnected) {
@@ -45,7 +46,7 @@ export default function DashboardPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Vue d'ensemble du marché Bitcoin</p>
+          <p className="text-muted-foreground">Vue d&apos;ensemble du marché Bitcoin</p>
         </div>
         <Alert variant="destructive">
           <WifiOff className="h-4 w-4" />
@@ -90,7 +91,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">Vue d'ensemble du marché Bitcoin</p>
+        <p className="text-muted-foreground">Vue d&apos;ensemble du marché Bitcoin</p>
       </div>
 
       {(marketError || analysisError) && (
@@ -177,6 +178,8 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {intelligenceLoading ? <Skeleton className="h-72" /> : intelligence ? <MarketIntelligenceCard intelligence={intelligence} /> : null}
 
       {/* Indicators Panel */}
       {analysisLoading ? (

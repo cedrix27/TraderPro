@@ -46,7 +46,7 @@ export default function AssistantPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Capacités de l'IA</CardTitle>
+              <CardTitle className="text-lg">Capacités de l&apos;IA</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {features.map((feature) => {
@@ -98,8 +98,8 @@ export default function AssistantPage() {
             <CardContent className="pt-4">
               <p className="text-xs text-yellow-500">
                 <strong>Avertissement :</strong> Les analyses et recommandations
-                fournies par l'IA sont à titre informatif uniquement. Le trading
-                comporte des risques. Ne tradez jamais avec de l'argent que vous
+                fournies par l&apos;IA sont à titre informatif uniquement. Le trading
+                comporte des risques. Ne tradez jamais avec de l&apos;argent que vous
                 ne pouvez pas vous permettre de perdre.
               </p>
             </CardContent>

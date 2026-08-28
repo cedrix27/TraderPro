@@ -5,3 +5,4 @@ export { useChat } from "./useChat";
 export type { ChatMessage } from "./useChat";
 export { useApiHealth } from "./useApiHealth";
 export { usePrediction, usePredictionStatus } from "./usePrediction";
+export { useMarketIntelligence } from "./useMarketIntelligence";

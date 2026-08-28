@@ -843,7 +843,7 @@ async def get_current_price(symbol: str = "BTCUSDT"):
     Récupère le prix actuel du Bitcoin.
 
     Exemple d'appel :
-    GET http://localhost:8000/api/market/price?symbol=BTCUSDT
+    GET http://localhost:8002/api/market/price?symbol=BTCUSDT
 
     Réponse :
     {
@@ -937,10 +937,10 @@ DELETE → Supprimer des données
 **Comment tester les endpoints :**
 ```bash
 # Avec curl
-curl http://localhost:8000/api/market/price
+curl http://localhost:8002/api/market/price
 
 # Avec le navigateur
-http://localhost:8000/docs  ← Interface interactive !
+http://localhost:8002/docs  ← Interface interactive !
 ```
 
 ---
@@ -1787,7 +1787,7 @@ Tu as maintenant une compréhension complète du backend TraderPro !
 
 **Prochaines étapes :**
 1. Lance le backend : `./venv/bin/uvicorn main:app --reload`
-2. Explore la documentation : `http://localhost:8000/docs`
+2. Explore la documentation : `http://localhost:8002/docs`
 3. Teste la prédiction LSTM : `GET /api/prediction/tomorrow`
 4. (Futur) Implémenter le Reinforcement Learning
 

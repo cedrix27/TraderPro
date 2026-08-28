@@ -20,6 +20,10 @@ LSTM PREDICTIONS:
 - GET /api/prediction/tomorrow  → Prédiction OHLC pour demain (LSTM)
 - GET /api/prediction/status    → Statut du modèle LSTM
 
+TTM PREDICTIONS (Transformer):
+- GET /api/prediction/ttm       → Prédiction TTM (Tiny Time Mixer)
+- GET /api/prediction/ttm/status → Statut du modèle TTM
+
 TRADING PLANS:
 - GET /api/plans                → Liste des plans disponibles
 - GET /api/plans/{id}           → Détail d'un plan
@@ -28,21 +32,70 @@ TRADING PLANS:
 ASSISTANT:
 - POST /api/chat                → Chat avec l'assistant IA
 """
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Query
+from typing import Any, List, Optional
+import math
 from datetime import datetime
 
 from app.core.models import (
     MarketData, TechnicalAnalysis, TradingSignal, TradingPlan,
-    PlanExecution, ChatRequest, ChatResponse, OHLCV
+    PlanExecution, ChatRequest, ChatResponse, DemoHistoryResponse, DemoTradeRequest, OHLCV, MarketIntelligence
 )
 from app.services.binance_service import binance_service
 from app.services.analysis_service import analysis_service
+from app.services.demo_trading_service import demo_trading_service
+from app.services.autonomous_trading_service import autonomous_trading_service
+from app.services.learning_service import learning_service
+from app.services.market_intelligence_service import market_intelligence_service
 from app.ml.model import trading_model
+from app.ml.model_v2 import trading_model_v2
 from app.ml.prediction_service import prediction_service
+from app.ml.ttm_prediction_service import ttm_prediction_service
 
 
 router = APIRouter(prefix="/api", tags=["TraderPro API"])
+
+
+# ============ DEMO TRADING (BINANCE TESTNET ONLY) ============
+
+@router.post("/demo/execute")
+async def execute_demo_trade(request: DemoTradeRequest):
+    """Record the AI decision and attempt a Spot order on Binance Testnet only."""
+    try:
+        analysis = await analysis_service.get_full_analysis(request.symbol.upper(), request.timeframe)
+        return await demo_trading_service.execute_signal(
+            analysis.signal, request.symbol, request.amount_usdt
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/demo/history", response_model=DemoHistoryResponse)
+async def get_demo_history():
+    """Return decisions, open Testnet positions, closed trades and realised P&L."""
+    try:
+        return await demo_trading_service.history()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/autonomous/status")
+async def get_autonomous_status():
+    """État du scheduler autonome et dernières expériences enregistrées."""
+    return autonomous_trading_service.status()
+
+
+@router.get("/learning/status")
+async def get_learning_status():
+    """Progression des expériences et registre champion/challenger."""
+    autonomous_trading_service.sync_experiences()
+    return learning_service.status()
+
+
+@router.get("/intelligence/market", response_model=MarketIntelligence)
+async def get_market_intelligence(symbol: str = Query(default="BTCUSDT")):
+    """Contexte Futures public : funding, open interest, volatilité et régime."""
+    return await market_intelligence_service.get_context(symbol)
 
 
 # ============ MARKET DATA ============
@@ -174,12 +227,12 @@ async def get_ml_prediction(
 
 @router.post("/model/train")
 async def train_model(
-    background_tasks: BackgroundTasks,
     symbol: str = Query(default="BTCUSDT"),
     timeframe: str = Query(default="1h"),
-    days: int = Query(default=90, ge=30, le=365),
+    days: int = Query(default=365, ge=220, le=730),
     horizon: int = Query(default=4, ge=1, le=24),
-    threshold: float = Query(default=0.02, ge=0.005, le=0.1)
+    threshold: float = Query(default=0.004, ge=0.001, le=0.05),
+    grid_search: bool = Query(default=True, description="Recherche par grille avec validation temporelle ; plus lente mais recommandée.")
 ):
     """
     Entraîner le modèle ML sur les données historiques
@@ -206,15 +259,16 @@ async def train_model(
             )
 
         # Entraîner le modèle
-        metrics = trading_model.train(df, horizon=horizon, threshold=threshold)
+        metrics = trading_model.train(df, horizon=horizon, threshold=threshold, grid_search=grid_search)
 
-        # Sauvegarder en arrière-plan
-        background_tasks.add_task(trading_model.save)
+        # Écrire l'artefact avant de répondre : un statut "success" signifie qu'il est durable.
+        artifact_path = trading_model.save()
 
         return {
             "status": "success",
             "message": "Modèle entraîné avec succès",
-            "metrics": metrics
+            "metrics": metrics,
+            "artifact_path": str(artifact_path),
         }
     except HTTPException:
         raise
@@ -228,6 +282,33 @@ async def get_model_status():
     return {
         "is_trained": trading_model.is_trained,
         "metrics": trading_model.metrics if trading_model.is_trained else None
+    }
+
+
+@router.get("/model/v2/status")
+async def get_model_v2_status():
+    """Rapport du pipeline V2. Il reste séparé du bot tant que le walk-forward n'est pas positif."""
+    if trading_model_v2.artifact_path.exists() and not trading_model_v2.is_trained:
+        try:
+            trading_model_v2.load()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Artefact V2 illisible : {exc}") from exc
+    def json_safe(value: Any) -> Any:
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
+        if isinstance(value, dict):
+            return {key: json_safe(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [json_safe(item) for item in value]
+        return value
+
+    return {
+        "is_trained": trading_model_v2.is_trained,
+        "eligible_for_testnet": bool(
+            trading_model_v2.is_trained
+            and trading_model_v2.metrics.get("walk_forward", {}).get("aggregate", {}).get("net_return", 0) > 0
+        ),
+        "metrics": json_safe(trading_model_v2.metrics) if trading_model_v2.is_trained else None,
     }
 
 
@@ -315,6 +396,220 @@ async def refresh_prediction():
     """
     prediction_service.clear_cache()
     return {"status": "cache_cleared", "message": "Le cache a été effacé. La prochaine prédiction sera recalculée."}
+
+
+# ============ TTM PREDICTIONS (Transformer) ============
+
+@router.get("/prediction/ttm")
+async def get_ttm_prediction(
+    symbol: str = Query(default="BTCUSDT")
+):
+    """
+    Obtenir la prédiction TTM (Tiny Time Mixer) pour demain
+
+    TTM est un modèle Transformer léger d'IBM, fine-tuné sur les données BTC.
+    Il prédit la direction (UP/DOWN) du prix pour le lendemain.
+
+    Avantages par rapport au LSTM:
+    - Architecture Transformer (attention mechanism)
+    - Pré-entraîné sur de nombreuses séries temporelles
+    - Meilleure capture des patterns long-terme
+
+    Retourne:
+    - prediction_for: Date de la prédiction (demain)
+    - current_price: Prix actuel
+    - prediction: Direction (UP/DOWN), confiance, probabilités
+    - recommendation: Action suggérée
+    - model_info: Informations sur le modèle TTM
+
+    - **symbol**: Paire de trading (défaut: BTCUSDT)
+    """
+    try:
+        # Vérifier si le modèle est disponible
+        status = ttm_prediction_service.get_status()
+        if not status['model_exists']:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "Modèle TTM non disponible",
+                    "message": "Le modèle TTM n'a pas été trouvé. Veuillez fine-tuner le modèle sur Colab et placer les fichiers dans backend/app/ml/models/ttm/",
+                    "required_files": status.get('required_files', [
+                        "config.json",
+                        "model.safetensors",
+                        "preprocessor.pkl",
+                        "ttm_config.json"
+                    ]),
+                    "notebook": "colab_ttm_finetuning.ipynb"
+                }
+            )
+
+        # Récupérer les données historiques (besoin de plus de données pour TTM)
+        # Lire le context_length depuis la config du modèle si disponible
+        ttm_config = ttm_prediction_service.config
+        if ttm_config is None:
+            # Essayer de charger la config
+            import json
+            config_path = ttm_prediction_service.config_path
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    ttm_config = json.load(f)
+
+        context_length = ttm_config.get('context_length', 512) if ttm_config else 512
+        df = await binance_service.get_historical_data(symbol, "1d", days=context_length + 60)
+
+        if df.empty:
+            raise HTTPException(status_code=404, detail="Pas de données disponibles")
+
+        if len(df) < context_length:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Pas assez de données historiques. Requis: {context_length} jours, Disponible: {len(df)}"
+            )
+
+        # Faire la prédiction
+        prediction = await ttm_prediction_service.predict_tomorrow(df)
+
+        return prediction
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/prediction/ttm/status")
+async def get_ttm_status():
+    """
+    Obtenir le statut du service de prédiction TTM
+
+    Retourne:
+    - is_loaded: Si le modèle est chargé en mémoire
+    - model_exists: Si les fichiers du modèle existent
+    - last_prediction_date: Date de la dernière prédiction
+    - config: Configuration du modèle
+    """
+    return ttm_prediction_service.get_status()
+
+
+@router.post("/prediction/ttm/refresh")
+async def refresh_ttm_prediction():
+    """
+    Forcer le rafraîchissement de la prédiction TTM
+
+    Efface le cache et force une nouvelle prédiction lors du prochain appel.
+    """
+    ttm_prediction_service.clear_cache()
+    return {"status": "cache_cleared", "message": "Le cache TTM a été effacé. La prochaine prédiction sera recalculée."}
+
+
+@router.get("/prediction/compare")
+async def compare_predictions(
+    symbol: str = Query(default="BTCUSDT")
+):
+    """
+    Comparer les prédictions de tous les modèles disponibles
+
+    Retourne les prédictions de:
+    - LSTM (si disponible)
+    - TTM (si disponible)
+    - Consensus (si les deux sont d'accord)
+
+    Utile pour avoir une vue d'ensemble et plus de confiance dans les signaux.
+    """
+    results = {
+        "symbol": symbol,
+        "timestamp": datetime.now().isoformat(),
+        "predictions": {},
+        "consensus": None
+    }
+
+    # Récupérer les données une seule fois (assez pour TTM qui peut avoir besoin de 512+ jours)
+    # Lire le context_length depuis la config TTM si disponible
+    import json
+    ttm_config = ttm_prediction_service.config
+    if ttm_config is None:
+        config_path = ttm_prediction_service.config_path
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                ttm_config = json.load(f)
+
+    context_length = ttm_config.get('context_length', 512) if ttm_config else 512
+    df = await binance_service.get_historical_data(symbol, "1d", days=context_length + 60)
+
+    if df.empty:
+        raise HTTPException(status_code=404, detail="Pas de données disponibles")
+
+    # Prédiction LSTM
+    lstm_status = prediction_service.get_status()
+    if lstm_status.get('model_exists'):
+        try:
+            lstm_pred = await prediction_service.predict_tomorrow(df)
+            results["predictions"]["lstm"] = {
+                "direction": lstm_pred["prediction"]["direction"],
+                "confidence": lstm_pred["prediction"]["confidence"],
+                "available": True
+            }
+        except Exception as e:
+            results["predictions"]["lstm"] = {
+                "available": False,
+                "error": str(e)
+            }
+    else:
+        results["predictions"]["lstm"] = {"available": False, "error": "Model not found"}
+
+    # Prédiction TTM
+    ttm_status = ttm_prediction_service.get_status()
+    if ttm_status.get('model_exists'):
+        try:
+            ttm_pred = await ttm_prediction_service.predict_tomorrow(df)
+            results["predictions"]["ttm"] = {
+                "direction": ttm_pred["prediction"]["direction"],
+                "confidence": ttm_pred["prediction"]["confidence"],
+                "available": True
+            }
+        except Exception as e:
+            results["predictions"]["ttm"] = {
+                "available": False,
+                "error": str(e)
+            }
+    else:
+        results["predictions"]["ttm"] = {"available": False, "error": "Model not found"}
+
+    # Calculer le consensus
+    available_preds = [
+        (name, pred) for name, pred in results["predictions"].items()
+        if pred.get("available", False)
+    ]
+
+    if len(available_preds) >= 2:
+        directions = [pred["direction"] for _, pred in available_preds]
+        confidences = [pred["confidence"] for _, pred in available_preds]
+
+        if len(set(directions)) == 1:
+            # Tous les modèles sont d'accord
+            results["consensus"] = {
+                "direction": directions[0],
+                "agreement": "FULL",
+                "avg_confidence": sum(confidences) / len(confidences),
+                "models_agreeing": len(available_preds)
+            }
+        else:
+            # Les modèles ne sont pas d'accord
+            results["consensus"] = {
+                "direction": "MIXED",
+                "agreement": "NONE",
+                "recommendation": "Les modèles donnent des signaux contradictoires. Prudence recommandée."
+            }
+    elif len(available_preds) == 1:
+        name, pred = available_preds[0]
+        results["consensus"] = {
+            "direction": pred["direction"],
+            "agreement": "SINGLE_MODEL",
+            "model": name,
+            "confidence": pred["confidence"]
+        }
+
+    return results
 
 
 # ============ TRADING PLANS ============
